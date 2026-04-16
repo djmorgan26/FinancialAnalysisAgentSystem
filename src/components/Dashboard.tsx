@@ -13,6 +13,8 @@ import PlatformOverlap from "./PlatformOverlap";
 import FinancialSimulation from "./FinancialSimulation";
 import MoneyAllocation from "./MoneyAllocation";
 import TradeIdeas from "./TradeIdeas";
+import DataConnections from "./DataConnections";
+import NewsFeed from "./NewsFeed";
 
 interface DashboardProps {
   analysis: AnalysisResult;
@@ -124,9 +126,14 @@ export default function Dashboard({ analysis, userProfile }: DashboardProps) {
         />
       </div>
 
-      <SpendingBreakdown data={analysis.spendingBreakdown} />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <SpendingBreakdown data={analysis.spendingBreakdown} />
+        <NewsFeed />
+      </div>
 
       <FinancialSimulation defaults={simDefaults} />
+
+      <DataConnections />
     </div>
   );
 }
