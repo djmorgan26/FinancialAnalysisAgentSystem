@@ -1,0 +1,18 @@
+{
+  "name": "Your Name",
+  "age": 0,
+  "annualIncome": 0,
+  "occupation": "Your Occupation",
+  "fixedExpenses": [
+    { "name": "Rent", "amount": 0, "frequency": "monthly" },
+    { "name": "Car Insurance", "amount": 0, "frequency": "monthly" }
+  ],
+  "investmentPreferences": {
+    "sectorBias": ["technology", "healthcare"],
+    "riskTolerance": "moderate",
+    "timeHorizon": "long"
+  },
+  "accounts": [
+    { "platform": "fidelity", "accountType": "roth_401k", "name": "My 401k" }
+  ]
+}

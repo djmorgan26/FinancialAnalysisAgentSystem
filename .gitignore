@@ -36,6 +36,18 @@ yarn-error.log*
 # vercel
 .vercel
 
+# financial data (sensitive — keep directory structure via .gitkeep)
+/data/raw/**
+!/data/raw/**/
+!/data/raw/**/.gitkeep
+/data/normalized/**
+!/data/normalized/
+!/data/normalized/.gitkeep
+/data/snapshots/**
+!/data/snapshots/
+!/data/snapshots/.gitkeep
+/config/user-profile.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
