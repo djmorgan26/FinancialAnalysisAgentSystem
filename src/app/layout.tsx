@@ -1,24 +1,31 @@
 import type { Metadata } from "next";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const jetbrains = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "Financial Dashboard",
-  description: "Personal finance analysis and tracking",
+  title: "Ledger · Personal Finance Dashboard",
+  description:
+    "One dashboard for every brokerage, every crypto wallet, every retirement account — plus actionable recommendations.",
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html
-      lang="en"
-      className="h-full antialiased"
-    >
-      <body className="min-h-full bg-background text-foreground" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
-        {children}
-      </body>
+    <html lang="en" className={`${inter.variable} ${jetbrains.variable}`}>
+      <body>{children}</body>
     </html>
   );
 }

@@ -1,5 +1,3 @@
-import { promises as fs } from "fs";
-import path from "path";
 import type {
   Account,
   AccountType,
@@ -14,13 +12,7 @@ import type {
   AssetClass,
   Sector,
 } from "./types";
-import { getSupabase } from "./supabase";
-
-const USER_PROFILE_PATH = path.join(
-  process.cwd(),
-  "config",
-  "user-profile.json"
-);
+import { getSupabaseAdmin } from "./supabase/admin";
 
 // ---------------------------------------------------------------------------
 // Row <-> domain mappers
@@ -28,6 +20,7 @@ const USER_PROFILE_PATH = path.join(
 
 interface AccountRow {
   id: string;
+  user_id: string;
   platform: Platform;
   account_type: AccountType;
   name: string;
@@ -38,6 +31,7 @@ interface AccountRow {
 
 interface TransactionRow {
   id: string;
+  user_id: string;
   account_id: string;
   platform: Platform;
   date: string;
@@ -51,6 +45,7 @@ interface TransactionRow {
 
 interface HoldingRow {
   id: string;
+  user_id: string;
   account_id: string;
   platform: Platform;
   symbol: string;
@@ -81,9 +76,10 @@ function accountFromRow(r: AccountRow): Account {
   };
 }
 
-function accountToRow(a: Account): AccountRow {
+function accountToRow(userId: string, a: Account): AccountRow {
   return {
     id: a.id,
+    user_id: userId,
     platform: a.platform,
     account_type: a.accountType,
     name: a.name,
@@ -108,9 +104,10 @@ function transactionFromRow(r: TransactionRow): Transaction {
   };
 }
 
-function transactionToRow(t: Transaction): TransactionRow {
+function transactionToRow(userId: string, t: Transaction): TransactionRow {
   return {
     id: t.id,
+    user_id: userId,
     account_id: t.accountId,
     platform: t.platform,
     date: t.date,
@@ -142,9 +139,10 @@ function holdingFromRow(r: HoldingRow): Holding {
   };
 }
 
-function holdingToRow(h: Holding): HoldingRow {
+function holdingToRow(userId: string, h: Holding): HoldingRow {
   return {
     id: h.id,
+    user_id: userId,
     account_id: h.accountId,
     platform: h.platform,
     symbol: h.symbol,
@@ -162,19 +160,20 @@ function holdingToRow(h: Holding): HoldingRow {
 }
 
 // ---------------------------------------------------------------------------
-// Public API
+// FinancialData (accounts / holdings / transactions)
 // ---------------------------------------------------------------------------
 
-export async function loadFinancialData(): Promise<FinancialData> {
-  const supabase = getSupabase();
+export async function loadFinancialData(userId: string): Promise<FinancialData> {
+  const supabase = getSupabaseAdmin();
 
   const [accountsRes, transactionsRes, holdingsRes] = await Promise.all([
-    supabase.from("accounts").select("*"),
+    supabase.from("accounts").select("*").eq("user_id", userId),
     supabase
       .from("transactions")
       .select("*")
+      .eq("user_id", userId)
       .order("date", { ascending: false }),
-    supabase.from("holdings").select("*"),
+    supabase.from("holdings").select("*").eq("user_id", userId),
   ]);
 
   if (accountsRes.error) throw accountsRes.error;
@@ -194,13 +193,16 @@ export async function loadFinancialData(): Promise<FinancialData> {
   return { lastUpdated, accounts, transactions, holdings };
 }
 
-export async function saveFinancialData(data: FinancialData): Promise<void> {
-  const supabase = getSupabase();
+export async function saveFinancialData(
+  userId: string,
+  data: FinancialData
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
   const now = new Date().toISOString();
 
   if (data.accounts.length > 0) {
     const rows = data.accounts.map((a) => ({
-      ...accountToRow(a),
+      ...accountToRow(userId, a),
       last_updated: a.lastUpdated || now,
     }));
     const { error } = await supabase
@@ -214,11 +216,12 @@ export async function saveFinancialData(data: FinancialData): Promise<void> {
     const { error: delErr } = await supabase
       .from("holdings")
       .delete()
+      .eq("user_id", userId)
       .in("account_id", accountIds);
     if (delErr) throw delErr;
 
     const rows = data.holdings.map((h) => ({
-      ...holdingToRow(h),
+      ...holdingToRow(userId, h),
       last_updated: h.lastUpdated || now,
     }));
     const { error } = await supabase.from("holdings").insert(rows);
@@ -226,7 +229,7 @@ export async function saveFinancialData(data: FinancialData): Promise<void> {
   }
 
   if (data.transactions.length > 0) {
-    const rows = data.transactions.map(transactionToRow);
+    const rows = data.transactions.map((t) => transactionToRow(userId, t));
     const { error } = await supabase
       .from("transactions")
       .upsert(rows, { onConflict: "id" });
@@ -234,36 +237,83 @@ export async function saveFinancialData(data: FinancialData): Promise<void> {
   }
 }
 
-export async function loadAnalysis(): Promise<AnalysisResult | null> {
-  const supabase = getSupabase();
+// ---------------------------------------------------------------------------
+// Analysis cache (per user)
+// ---------------------------------------------------------------------------
+
+export async function loadAnalysis(
+  userId: string
+): Promise<AnalysisResult | null> {
+  const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("analysis_cache")
     .select("result")
-    .eq("id", 1)
+    .eq("user_id", userId)
     .maybeSingle();
   if (error) throw error;
   return (data?.result as AnalysisResult) ?? null;
 }
 
-export async function saveAnalysis(result: AnalysisResult): Promise<void> {
-  const supabase = getSupabase();
+export async function saveAnalysis(
+  userId: string,
+  result: AnalysisResult
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("analysis_cache").upsert(
     {
-      id: 1,
+      user_id: userId,
       result,
       generated_at: result.generatedAt,
       updated_at: new Date().toISOString(),
     },
-    { onConflict: "id" }
+    { onConflict: "user_id" }
   );
   if (error) throw error;
 }
 
-export async function loadUserProfile(): Promise<UserProfile> {
-  try {
-    const raw = await fs.readFile(USER_PROFILE_PATH, "utf-8");
-    return JSON.parse(raw) as UserProfile;
-  } catch {
+// ---------------------------------------------------------------------------
+// User profile (per-user row in user_profiles table)
+// ---------------------------------------------------------------------------
+
+interface UserProfileRow {
+  user_id: string;
+  name: string;
+  age: number | null;
+  annual_income: number | string | null;
+  occupation: string | null;
+  fixed_expenses: UserProfile["fixedExpenses"] | null;
+  payroll_details: Record<string, unknown> | null;
+  risk_tolerance: "conservative" | "moderate" | "aggressive" | null;
+  time_horizon: "short" | "medium" | "long" | null;
+  sector_bias: Sector[] | null;
+  onboarding_complete: boolean;
+}
+
+function profileFromRow(r: UserProfileRow): UserProfile {
+  return {
+    name: r.name ?? "",
+    age: r.age ?? 0,
+    annualIncome: r.annual_income ? num(r.annual_income) : 0,
+    occupation: r.occupation ?? "",
+    fixedExpenses: (r.fixed_expenses as UserProfile["fixedExpenses"]) ?? [],
+    investmentPreferences: {
+      sectorBias: r.sector_bias ?? [],
+      riskTolerance: r.risk_tolerance ?? "moderate",
+      timeHorizon: r.time_horizon ?? "long",
+    },
+    accounts: [],
+  };
+}
+
+export async function loadUserProfile(userId: string): Promise<UserProfile> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("user_profiles")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) {
     return {
       name: "",
       age: 0,
@@ -278,16 +328,190 @@ export async function loadUserProfile(): Promise<UserProfile> {
       accounts: [],
     };
   }
+  return profileFromRow(data as UserProfileRow);
 }
 
+export async function saveUserProfile(
+  userId: string,
+  profile: Partial<UserProfile> & {
+    payrollDetails?: Record<string, unknown>;
+    onboardingComplete?: boolean;
+  }
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const row: Partial<UserProfileRow> & { user_id: string; updated_at: string } = {
+    user_id: userId,
+    updated_at: new Date().toISOString(),
+  };
+  if (profile.name !== undefined) row.name = profile.name;
+  if (profile.age !== undefined) row.age = profile.age;
+  if (profile.annualIncome !== undefined) row.annual_income = profile.annualIncome;
+  if (profile.occupation !== undefined) row.occupation = profile.occupation;
+  if (profile.fixedExpenses !== undefined) row.fixed_expenses = profile.fixedExpenses;
+  if (profile.payrollDetails !== undefined) row.payroll_details = profile.payrollDetails;
+  if (profile.investmentPreferences?.riskTolerance !== undefined)
+    row.risk_tolerance = profile.investmentPreferences.riskTolerance;
+  if (profile.investmentPreferences?.timeHorizon !== undefined)
+    row.time_horizon = profile.investmentPreferences.timeHorizon;
+  if (profile.investmentPreferences?.sectorBias !== undefined)
+    row.sector_bias = profile.investmentPreferences.sectorBias;
+  if (profile.onboardingComplete !== undefined)
+    row.onboarding_complete = profile.onboardingComplete;
+
+  const { error } = await supabase
+    .from("user_profiles")
+    .upsert(row, { onConflict: "user_id" });
+  if (error) throw error;
+}
+
+export async function getOnboardingComplete(userId: string): Promise<boolean> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("user_profiles")
+    .select("onboarding_complete")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data?.onboarding_complete);
+}
+
+// ---------------------------------------------------------------------------
+// Investment preferences (per-user)
+// ---------------------------------------------------------------------------
+
+export interface InvestmentPreferences {
+  rothIraAnnualTarget: number | null;
+  rothIraYtdContributed: number;
+  roth401kPercent: number | null;
+  emergencyFundTarget: number | null;
+  cashFloorBrokerage: number;
+  singlePositionCapPercent: number | null;
+  coreAllocationMinPercent: number | null;
+  coreTickers: string[];
+  sectorCaps: Record<string, number>;
+  excludedTickers: string[];
+  allowSellRecommendations: boolean;
+  allowTaxLossHarvesting: boolean;
+  rebalanceDriftThresholdPercent: number;
+  notes: string | null;
+}
+
+export const DEFAULT_PREFERENCES: InvestmentPreferences = {
+  rothIraAnnualTarget: 7000,
+  rothIraYtdContributed: 0,
+  roth401kPercent: null,
+  emergencyFundTarget: null,
+  cashFloorBrokerage: 0,
+  singlePositionCapPercent: null,
+  coreAllocationMinPercent: 50,
+  coreTickers: ["VTI", "VOO", "QQQ", "SCHG"],
+  sectorCaps: {},
+  excludedTickers: [],
+  allowSellRecommendations: true,
+  allowTaxLossHarvesting: true,
+  rebalanceDriftThresholdPercent: 5,
+  notes: null,
+};
+
+export async function loadInvestmentPreferences(
+  userId: string
+): Promise<InvestmentPreferences> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("investment_preferences")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return DEFAULT_PREFERENCES;
+  return {
+    rothIraAnnualTarget:
+      data.roth_ira_annual_target != null ? num(data.roth_ira_annual_target) : null,
+    rothIraYtdContributed: data.roth_ira_ytd_contributed
+      ? num(data.roth_ira_ytd_contributed)
+      : 0,
+    roth401kPercent:
+      data.roth_401k_percent != null ? num(data.roth_401k_percent) : null,
+    emergencyFundTarget:
+      data.emergency_fund_target != null ? num(data.emergency_fund_target) : null,
+    cashFloorBrokerage: data.cash_floor_brokerage
+      ? num(data.cash_floor_brokerage)
+      : 0,
+    singlePositionCapPercent:
+      data.single_position_cap_percent != null
+        ? num(data.single_position_cap_percent)
+        : null,
+    coreAllocationMinPercent:
+      data.core_allocation_min_percent != null
+        ? num(data.core_allocation_min_percent)
+        : null,
+    coreTickers: data.core_tickers ?? [],
+    sectorCaps: (data.sector_caps as Record<string, number>) ?? {},
+    excludedTickers: data.excluded_tickers ?? [],
+    allowSellRecommendations: data.allow_sell_recommendations ?? true,
+    allowTaxLossHarvesting: data.allow_tax_loss_harvesting ?? true,
+    rebalanceDriftThresholdPercent: data.rebalance_drift_threshold_percent
+      ? num(data.rebalance_drift_threshold_percent)
+      : 5,
+    notes: data.notes ?? null,
+  };
+}
+
+export async function saveInvestmentPreferences(
+  userId: string,
+  prefs: Partial<InvestmentPreferences>
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const row: Record<string, unknown> = {
+    user_id: userId,
+    updated_at: new Date().toISOString(),
+  };
+  if (prefs.rothIraAnnualTarget !== undefined)
+    row.roth_ira_annual_target = prefs.rothIraAnnualTarget;
+  if (prefs.rothIraYtdContributed !== undefined)
+    row.roth_ira_ytd_contributed = prefs.rothIraYtdContributed;
+  if (prefs.roth401kPercent !== undefined)
+    row.roth_401k_percent = prefs.roth401kPercent;
+  if (prefs.emergencyFundTarget !== undefined)
+    row.emergency_fund_target = prefs.emergencyFundTarget;
+  if (prefs.cashFloorBrokerage !== undefined)
+    row.cash_floor_brokerage = prefs.cashFloorBrokerage;
+  if (prefs.singlePositionCapPercent !== undefined)
+    row.single_position_cap_percent = prefs.singlePositionCapPercent;
+  if (prefs.coreAllocationMinPercent !== undefined)
+    row.core_allocation_min_percent = prefs.coreAllocationMinPercent;
+  if (prefs.coreTickers !== undefined) row.core_tickers = prefs.coreTickers;
+  if (prefs.sectorCaps !== undefined) row.sector_caps = prefs.sectorCaps;
+  if (prefs.excludedTickers !== undefined)
+    row.excluded_tickers = prefs.excludedTickers;
+  if (prefs.allowSellRecommendations !== undefined)
+    row.allow_sell_recommendations = prefs.allowSellRecommendations;
+  if (prefs.allowTaxLossHarvesting !== undefined)
+    row.allow_tax_loss_harvesting = prefs.allowTaxLossHarvesting;
+  if (prefs.rebalanceDriftThresholdPercent !== undefined)
+    row.rebalance_drift_threshold_percent = prefs.rebalanceDriftThresholdPercent;
+  if (prefs.notes !== undefined) row.notes = prefs.notes;
+
+  const { error } = await supabase
+    .from("investment_preferences")
+    .upsert(row, { onConflict: "user_id" });
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------------
+// Snapshots
+// ---------------------------------------------------------------------------
+
 export async function createSnapshot(
+  userId: string,
   analysis: AnalysisResult
 ): Promise<Snapshot> {
-  const supabase = getSupabase();
+  const supabase = getSupabaseAdmin();
 
   const { data: snap, error } = await supabase
     .from("snapshots")
     .insert({
+      user_id: userId,
       date: analysis.generatedAt,
       net_worth: analysis.netWorth,
       total_assets: analysis.totalAssets,
@@ -325,12 +549,13 @@ export async function createSnapshot(
   };
 }
 
-export async function loadSnapshots(): Promise<Snapshot[]> {
-  const supabase = getSupabase();
+export async function loadSnapshots(userId: string): Promise<Snapshot[]> {
+  const supabase = getSupabaseAdmin();
 
   const { data: snaps, error } = await supabase
     .from("snapshots")
     .select("*")
+    .eq("user_id", userId)
     .order("date", { ascending: true });
   if (error) throw error;
   if (!snaps || snaps.length === 0) return [];
@@ -360,5 +585,55 @@ export async function loadSnapshots(): Promise<Snapshot[]> {
     totalLiabilities: num(s.total_liabilities),
     savingsRate: num(s.savings_rate),
     accountBalances: balancesBySnapshot.get(s.id) ?? [],
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Sync logs
+// ---------------------------------------------------------------------------
+
+export interface SyncLogEntry {
+  id: string;
+  source: string;
+  status: "success" | "error" | "info";
+  message: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+}
+
+export async function writeSyncLog(
+  userId: string,
+  entry: Omit<SyncLogEntry, "id" | "createdAt">
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("sync_logs").insert({
+    user_id: userId,
+    source: entry.source,
+    status: entry.status,
+    message: entry.message,
+    metadata: entry.metadata ?? null,
+  });
+  if (error) throw error;
+}
+
+export async function loadSyncLogs(
+  userId: string,
+  limit = 50
+): Promise<SyncLogEntry[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("sync_logs")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    source: r.source,
+    status: r.status as SyncLogEntry["status"],
+    message: r.message ?? "",
+    metadata: r.metadata ?? undefined,
+    createdAt: r.created_at,
   }));
 }

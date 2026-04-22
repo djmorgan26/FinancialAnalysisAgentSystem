@@ -104,12 +104,12 @@ export interface SchwabTransaction {
 // Token Management
 // ---------------------------------------------------------------------------
 
-async function loadTokens(): Promise<SchwabTokens | null> {
+async function loadTokens(userId: string): Promise<SchwabTokens | null> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("schwab_tokens")
     .select("access_token, refresh_token, expires_at, refresh_expires_at")
-    .eq("id", 1)
+    .eq("user_id", userId)
     .maybeSingle();
 
   if (error) {
@@ -125,18 +125,21 @@ async function loadTokens(): Promise<SchwabTokens | null> {
   };
 }
 
-async function saveTokens(tokens: SchwabTokens): Promise<void> {
+async function saveTokens(
+  userId: string,
+  tokens: SchwabTokens
+): Promise<void> {
   const supabase = getSupabase();
   const { error } = await supabase.from("schwab_tokens").upsert(
     {
-      id: 1,
+      user_id: userId,
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
       expires_at: tokens.expires_at,
       refresh_expires_at: tokens.refresh_expires_at,
       updated_at: new Date().toISOString(),
     },
-    { onConflict: "id" }
+    { onConflict: "user_id" }
   );
   if (error) {
     throw new Error(`Failed to save Schwab tokens: ${error.message}`);
@@ -155,13 +158,16 @@ function basicAuthHeader(): string {
 
 /**
  * Step 1: Generate the URL the user must visit to authorize the app.
+ * `state` carries the user_id so the callback can associate the returned
+ * tokens with the right account.
  */
-export function getAuthorizationUrl(): string {
+export function getAuthorizationUrl(userId: string): string {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: APP_KEY,
     redirect_uri: CALLBACK_URL,
     scope: "api",
+    state: userId,
   });
   return `${SCHWAB_AUTH_URL}?${params.toString()}`;
 }
@@ -171,6 +177,7 @@ export function getAuthorizationUrl(): string {
  * Called from the /api/schwab/callback route.
  */
 export async function exchangeCodeForTokens(
+  userId: string,
   code: string
 ): Promise<SchwabTokens> {
   const res = await fetch(SCHWAB_TOKEN_URL, {
@@ -200,7 +207,7 @@ export async function exchangeCodeForTokens(
     refresh_expires_at: now + 7 * 24 * 60 * 60 * 1000, // 7 days
   };
 
-  await saveTokens(tokens);
+  await saveTokens(userId, tokens);
   return tokens;
 }
 
@@ -208,6 +215,7 @@ export async function exchangeCodeForTokens(
  * Refresh the access token using the refresh token.
  */
 async function refreshAccessToken(
+  userId: string,
   refreshToken: string
 ): Promise<SchwabTokens> {
   const res = await fetch(SCHWAB_TOKEN_URL, {
@@ -236,16 +244,16 @@ async function refreshAccessToken(
     refresh_expires_at: now + 7 * 24 * 60 * 60 * 1000,
   };
 
-  await saveTokens(tokens);
+  await saveTokens(userId, tokens);
   return tokens;
 }
 
 /**
- * Get a valid access token, refreshing if needed.
+ * Get a valid access token for this user, refreshing if needed.
  * Returns null if no tokens exist or refresh token has expired.
  */
-export async function getValidToken(): Promise<string | null> {
-  const tokens = await loadTokens();
+export async function getValidToken(userId: string): Promise<string | null> {
+  const tokens = await loadTokens(userId);
   if (!tokens) return null;
 
   // Refresh token expired → user must re-auth
@@ -260,7 +268,7 @@ export async function getValidToken(): Promise<string | null> {
 
   // Refresh the access token
   try {
-    const refreshed = await refreshAccessToken(tokens.refresh_token);
+    const refreshed = await refreshAccessToken(userId, tokens.refresh_token);
     return refreshed.access_token;
   } catch (err) {
     console.error("Failed to refresh Schwab token:", err);
@@ -269,14 +277,14 @@ export async function getValidToken(): Promise<string | null> {
 }
 
 /**
- * Check connection status.
+ * Check connection status for a user.
  */
-export async function getConnectionStatus(): Promise<{
+export async function getConnectionStatus(userId: string): Promise<{
   connected: boolean;
   expiresAt: string | null;
   needsReauth: boolean;
 }> {
-  const tokens = await loadTokens();
+  const tokens = await loadTokens(userId);
   if (!tokens) {
     return { connected: false, expiresAt: null, needsReauth: true };
   }
@@ -288,12 +296,24 @@ export async function getConnectionStatus(): Promise<{
   };
 }
 
+/**
+ * Disconnect — delete tokens for a user.
+ */
+export async function disconnect(userId: string): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("schwab_tokens")
+    .delete()
+    .eq("user_id", userId);
+  if (error) throw new Error(`Failed to disconnect: ${error.message}`);
+}
+
 // ---------------------------------------------------------------------------
 // API Helpers (read-only)
 // ---------------------------------------------------------------------------
 
-async function schwabFetch<T>(endpoint: string): Promise<T> {
-  const token = await getValidToken();
+async function schwabFetch<T>(userId: string, endpoint: string): Promise<T> {
+  const token = await getValidToken(userId);
   if (!token) {
     throw new Error("SCHWAB_NOT_CONNECTED");
   }
@@ -320,24 +340,28 @@ async function schwabFetch<T>(endpoint: string): Promise<T> {
 /**
  * List all linked account numbers and hash values.
  */
-export async function listAccounts(): Promise<SchwabAccount[]> {
-  return schwabFetch<SchwabAccount[]>("/accounts/accountNumbers");
+export async function listAccounts(userId: string): Promise<SchwabAccount[]> {
+  return schwabFetch<SchwabAccount[]>(userId, "/accounts/accountNumbers");
 }
 
 /**
  * Get detailed account info including positions for all accounts.
  */
-export async function getAccountDetails(): Promise<SchwabAccountDetail[]> {
-  return schwabFetch<SchwabAccountDetail[]>("/accounts?fields=positions");
+export async function getAccountDetails(
+  userId: string
+): Promise<SchwabAccountDetail[]> {
+  return schwabFetch<SchwabAccountDetail[]>(userId, "/accounts?fields=positions");
 }
 
 /**
  * Get positions for a specific account.
  */
 export async function getAccountPositions(
+  userId: string,
   encryptedAccountId: string
 ): Promise<SchwabAccountDetail> {
   return schwabFetch<SchwabAccountDetail>(
+    userId,
     `/accounts/${encryptedAccountId}?fields=positions`
   );
 }
@@ -346,6 +370,7 @@ export async function getAccountPositions(
  * Get transactions for a specific account.
  */
 export async function getTransactions(
+  userId: string,
   encryptedAccountId: string,
   startDate: string, // YYYY-MM-DD
   endDate: string
@@ -356,6 +381,7 @@ export async function getTransactions(
     types: "TRADE,DIVIDEND_OR_INTEREST,ACH,WIRE",
   });
   return schwabFetch<SchwabTransaction[]>(
+    userId,
     `/accounts/${encryptedAccountId}/transactions?${params.toString()}`
   );
 }
@@ -364,11 +390,11 @@ export async function getTransactions(
  * Fetch everything in one call: all accounts with positions.
  * This is the main entry point for the dashboard refresh.
  */
-export async function fetchAllSchwabData(): Promise<{
+export async function fetchAllSchwabData(userId: string): Promise<{
   accounts: SchwabAccountDetail[];
   fetchedAt: string;
 }> {
-  const accounts = await getAccountDetails();
+  const accounts = await getAccountDetails(userId);
   return {
     accounts,
     fetchedAt: new Date().toISOString(),

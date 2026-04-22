@@ -6,13 +6,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as finnhub from "@/lib/finnhub-api";
 import { loadAnalysis } from "@/lib/data-store";
+import { requireUser } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
   if (!finnhub.isConfigured()) {
     return NextResponse.json(
       {
         error: "Finnhub not configured",
-        setup: "Add FINNHUB_API_KEY to .env.local (free at https://finnhub.io)",
+        setup:
+          "Add FINNHUB_API_KEY to .env.local (free at https://finnhub.io)",
       },
       { status: 400 }
     );
@@ -45,8 +47,8 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Default: portfolio news for top holdings
-    const analysis = await loadAnalysis();
+    const { user } = await requireUser();
+    const analysis = await loadAnalysis(user.id);
     if (!analysis) {
       return NextResponse.json(
         { error: "No analysis data. Run analysis first." },
@@ -54,7 +56,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get top holdings by value for news
     const topSymbols = analysis.holdings
       .filter(
         (h) =>

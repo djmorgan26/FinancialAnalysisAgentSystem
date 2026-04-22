@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Papa from "papaparse";
 import { v4 as uuidv4 } from "uuid";
 import { loadFinancialData, saveFinancialData } from "@/lib/data-store";
+import { requireUser } from "@/lib/supabase/server";
 import type {
   Platform,
   Account,
@@ -35,6 +36,7 @@ const SUPPORTED_PLATFORMS: Platform[] = [
  */
 export async function POST(request: NextRequest) {
   try {
+    const { user } = await requireUser();
     const formData = await request.formData();
     const file = formData.get("file");
     const platform = formData.get("platform") as string | null;
@@ -86,9 +88,9 @@ export async function POST(request: NextRequest) {
     const imported = importer(rows, platform as Platform);
 
     // --- Merge into existing data ---
-    const existing = await loadFinancialData();
+    const existing = await loadFinancialData(user.id);
     const merged = mergeData(existing, imported);
-    await saveFinancialData(merged);
+    await saveFinancialData(user.id, merged);
 
     return NextResponse.json({
       success: true,

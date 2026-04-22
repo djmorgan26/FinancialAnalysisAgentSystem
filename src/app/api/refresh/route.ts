@@ -1,18 +1,12 @@
 /**
- * POST /api/refresh — One-click full data refresh.
- *
- * Orchestrates all available data sources:
- *   1. Schwab API (if connected) → pull accounts + positions
- *   2. Finnhub (if configured) → update real-time prices
- *   3. Coinbase (if configured) → pull crypto holdings
- *   4. Falls back to existing CSV data for uncovered platforms
- *   5. Re-runs the analysis pipeline
+ * POST /api/refresh — One-click full data refresh for the signed-in user.
  */
 import { NextResponse } from "next/server";
 import * as schwab from "@/lib/schwab-api";
 import * as finnhub from "@/lib/finnhub-api";
 import * as coinbase from "@/lib/coinbase-api";
 import { loadAnalysis, saveAnalysis } from "@/lib/data-store";
+import { requireUser } from "@/lib/supabase/server";
 
 interface RefreshResult {
   schwab: { success: boolean; message: string };
@@ -27,6 +21,13 @@ interface RefreshResult {
 }
 
 export async function POST() {
+  let userId: string;
+  try {
+    ({ user: { id: userId } } = await requireUser());
+  } catch {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
   const result: RefreshResult = {
     schwab: { success: false, message: "Not configured" },
     finnhub: { success: false, message: "Not configured" },
@@ -39,12 +40,12 @@ export async function POST() {
     },
   };
 
-  // ---------- Step 1: Schwab ----------
+  // ---------- Schwab ----------
   if (schwab.isConfigured()) {
     try {
-      const token = await schwab.getValidToken();
+      const token = await schwab.getValidToken(userId);
       if (token) {
-        const data = await schwab.fetchAllSchwabData();
+        const data = await schwab.fetchAllSchwabData(userId);
         result.schwab = {
           success: true,
           message: `Synced ${data.accounts.length} accounts`,
@@ -53,7 +54,7 @@ export async function POST() {
       } else {
         result.schwab = {
           success: false,
-          message: "Token expired — re-authenticate at /api/schwab",
+          message: "Token expired — re-authenticate from the Connections page",
         };
       }
     } catch (err: unknown) {
@@ -64,7 +65,7 @@ export async function POST() {
     }
   }
 
-  // ---------- Step 2: Coinbase ----------
+  // ---------- Coinbase ----------
   if (coinbase.isConfigured()) {
     try {
       const holdings = await coinbase.getHoldings();
@@ -81,16 +82,15 @@ export async function POST() {
     }
   }
 
-  // ---------- Step 3: Finnhub price refresh ----------
+  // ---------- Finnhub price refresh ----------
   if (finnhub.isConfigured()) {
     try {
-      const analysis = await loadAnalysis();
+      const analysis = await loadAnalysis(userId);
       if (analysis) {
         const symbols = [
           ...new Set(analysis.holdings.map((h) => h.symbol)),
         ].filter(
-          (s) =>
-            s && !s.startsWith("NON") && s !== "SWVXX" && s !== "Cash"
+          (s) => s && !s.startsWith("NON") && s !== "SWVXX" && s !== "Cash"
         );
 
         const quotes = await finnhub.getQuotes(symbols);
@@ -109,16 +109,13 @@ export async function POST() {
               ) / 100;
             holding.gainLossPercent =
               holding.costBasis > 0
-                ? Math.round(
-                    (holding.gainLoss / holding.costBasis) * 10000
-                  ) / 100
+                ? Math.round((holding.gainLoss / holding.costBasis) * 10000) / 100
                 : 0;
             holding.lastUpdated = new Date().toISOString();
             updatedCount++;
           }
         }
 
-        // Recalculate totals
         const totalAssets = analysis.holdings.reduce(
           (sum, h) => sum + h.currentValue,
           0
@@ -127,7 +124,7 @@ export async function POST() {
         analysis.netWorth = analysis.totalAssets - analysis.totalLiabilities;
         analysis.generatedAt = new Date().toISOString();
 
-        await saveAnalysis(analysis);
+        await saveAnalysis(userId, analysis);
 
         result.finnhub = {
           success: true,
@@ -144,7 +141,6 @@ export async function POST() {
     }
   }
 
-  // Always include CSV as a data source
   result.overall.dataSourcesUsed.push("csv-fallback");
   result.overall.success = result.overall.dataSourcesUsed.length > 1;
 

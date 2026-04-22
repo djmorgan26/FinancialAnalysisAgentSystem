@@ -140,6 +140,13 @@ async function main() {
   // Push non-Schwab platforms to Supabase. Schwab is API-driven — don't clobber.
   try {
     await loadEnv();
+    const userId = process.env.TARGET_USER_ID;
+    if (!userId) {
+      console.warn(
+        "  ⚠ Supabase sync skipped: set TARGET_USER_ID (your auth user_id) to push."
+      );
+      return;
+    }
     const supabase = getSupabase();
     const pushedPlatforms: Platform[] = platforms.filter(
       (p): p is Platform => p !== "schwab"
@@ -155,6 +162,7 @@ async function main() {
     if (accts.length > 0) {
       const rows = accts.map((a) => ({
         id: a.id,
+        user_id: userId,
         platform: a.platform,
         account_type: a.accountType,
         name: a.name,
@@ -171,11 +179,13 @@ async function main() {
       const { error: delErr } = await supabase
         .from("holdings")
         .delete()
+        .eq("user_id", userId)
         .in("platform", pushedPlatforms);
       if (delErr) throw delErr;
 
       const rows = hlds.map((h) => ({
         id: h.id,
+        user_id: userId,
         account_id: h.accountId,
         platform: h.platform,
         symbol: h.symbol,

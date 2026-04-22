@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as finnhub from "@/lib/finnhub-api";
 import { loadAnalysis, saveAnalysis } from "@/lib/data-store";
+import { requireUser } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
   if (!finnhub.isConfigured()) {
@@ -48,7 +49,8 @@ export async function POST() {
   }
 
   try {
-    const analysis = await loadAnalysis();
+    const { user } = await requireUser();
+    const analysis = await loadAnalysis(user.id);
     if (!analysis) {
       return NextResponse.json(
         { error: "No analysis data found. Run analysis first." },
@@ -106,7 +108,7 @@ export async function POST() {
         percent: Math.round((value / totalAssets) * 1000) / 10,
       }));
 
-    await saveAnalysis(analysis);
+    await saveAnalysis(user.id, analysis);
 
     return NextResponse.json({
       success: true,

@@ -1,5 +1,5 @@
 /**
- * GET  /api/schwab — Connection status + auth URL
+ * GET  /api/schwab — Connection status + auth URL (for the logged-in user)
  * POST /api/schwab — Trigger data sync from Schwab (writes to Supabase)
  */
 import { NextResponse } from "next/server";
@@ -13,12 +13,9 @@ import {
   type SchwabPosition,
 } from "@/lib/schwab-api";
 import { deterministicId, todayISO } from "@/lib/importers/utils";
-import { getSupabase } from "@/lib/supabase";
-import type {
-  AccountType,
-  AssetClass,
-  Sector,
-} from "@/lib/types";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { requireUser } from "@/lib/supabase/server";
+import type { AccountType, AssetClass, Sector } from "@/lib/types";
 
 export async function GET() {
   if (!isConfigured()) {
@@ -27,23 +24,19 @@ export async function GET() {
       connected: false,
       message:
         "Schwab API not configured. Add SCHWAB_APP_KEY and SCHWAB_APP_SECRET to .env.local",
-      setupGuide: {
-        step1: "Go to https://developer.schwab.com and create an account",
-        step2: 'Create an app → select "Accounts and Trading Production"',
-        step3:
-          "Set callback URL to your deployed URL + /api/schwab/callback (or https://127.0.0.1:8182 for local)",
-        step4: "Copy App Key and Secret to .env.local in project root",
-        envTemplate:
-          "SCHWAB_APP_KEY=your_app_key\nSCHWAB_APP_SECRET=your_app_secret",
-      },
     });
   }
-
-  const status = await getConnectionStatus();
+  let userId: string;
+  try {
+    ({ user: { id: userId } } = await requireUser());
+  } catch {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const status = await getConnectionStatus(userId);
   return NextResponse.json({
     configured: true,
     ...status,
-    authUrl: status.needsReauth ? getAuthorizationUrl() : null,
+    authUrl: status.needsReauth ? getAuthorizationUrl(userId) : null,
   });
 }
 
@@ -54,28 +47,35 @@ export async function POST() {
       { status: 400 }
     );
   }
+  let userId: string;
+  try {
+    ({ user: { id: userId } } = await requireUser());
+  } catch {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
 
-  const token = await getValidToken();
+  const token = await getValidToken(userId);
   if (!token) {
     return NextResponse.json(
       {
         error: "Not connected to Schwab",
-        authUrl: getAuthorizationUrl(),
+        authUrl: getAuthorizationUrl(userId),
       },
       { status: 401 }
     );
   }
 
-  const supabase = getSupabase();
+  const supabase = getSupabaseAdmin();
   const fetchedAt = new Date().toISOString();
 
   try {
-    const data = await fetchAllSchwabData();
+    const data = await fetchAllSchwabData(userId);
 
-    const { accountRows, holdingRows, accountDiagnostics } =
-      normalize(data.accounts);
+    const { accountRows, holdingRows, accountDiagnostics } = normalize(
+      userId,
+      data.accounts
+    );
 
-    // ---- Upsert accounts ----
     if (accountRows.length > 0) {
       const { error } = await supabase
         .from("accounts")
@@ -83,12 +83,12 @@ export async function POST() {
       if (error) throw new Error(`accounts upsert: ${error.message}`);
     }
 
-    // ---- Replace holdings for these Schwab accounts (stale-removal) ----
     const accountIds = accountRows.map((a) => a.id);
     if (accountIds.length > 0) {
       const { error: delErr } = await supabase
         .from("holdings")
         .delete()
+        .eq("user_id", userId)
         .eq("platform", "schwab")
         .in("account_id", accountIds);
       if (delErr) throw new Error(`holdings delete: ${delErr.message}`);
@@ -99,8 +99,8 @@ export async function POST() {
       if (error) throw new Error(`holdings insert: ${error.message}`);
     }
 
-    // ---- Sync log ----
     await supabase.from("sync_logs").insert({
+      user_id: userId,
       source: "schwab",
       status: "success",
       message: `Synced ${accountRows.length} accounts, ${holdingRows.length} positions`,
@@ -121,6 +121,7 @@ export async function POST() {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     await supabase.from("sync_logs").insert({
+      user_id: userId,
       source: "schwab",
       status: "error",
       message,
@@ -136,6 +137,7 @@ export async function POST() {
 
 interface AccountRow {
   id: string;
+  user_id: string;
   platform: "schwab";
   account_type: AccountType;
   name: string;
@@ -146,6 +148,7 @@ interface AccountRow {
 
 interface HoldingRow {
   id: string;
+  user_id: string;
   account_id: string;
   platform: "schwab";
   symbol: string;
@@ -169,7 +172,10 @@ type AccountDiagnostic = {
   resolvedName: string;
 };
 
-function normalize(accounts: SchwabAccountDetail[]): {
+function normalize(
+  userId: string,
+  accounts: SchwabAccountDetail[]
+): {
   accountRows: AccountRow[];
   holdingRows: HoldingRow[];
   accountDiagnostics: AccountDiagnostic[];
@@ -190,18 +196,13 @@ function normalize(accounts: SchwabAccountDetail[]): {
       : null;
 
     const accountType = override?.accountType ?? mapAccountType(sa.type);
-    const label =
-      override?.name ??
-      defaultAccountName(accountType, accountNumber);
+    const label = override?.name ?? defaultAccountName(accountType, accountNumber);
 
     const idSeed = accountNumber
-      ? `schwab-account-${accountNumber}`
-      : `schwab-account-${sa.type}`;
+      ? `schwab-account-${userId}-${accountNumber}`
+      : `schwab-account-${userId}-${sa.type}`;
     const accountId = deterministicId(idSeed);
 
-    // Authoritative balance from Schwab's liquidationValue (matches what
-    // the Schwab app and website display). Falls back to longMarketValue +
-    // totalCash if missing.
     const balance =
       sa.currentBalances?.liquidationValue ??
       (sa.currentBalances?.longMarketValue ?? 0) +
@@ -209,6 +210,7 @@ function normalize(accounts: SchwabAccountDetail[]): {
 
     accountRows.push({
       id: accountId,
+      user_id: userId,
       platform: "schwab",
       account_type: accountType,
       name: label,
@@ -228,7 +230,13 @@ function normalize(accounts: SchwabAccountDetail[]): {
     });
 
     for (const pos of sa.positions ?? []) {
-      const row = positionToHoldingRow(pos, accountId, accountNumber || label, now);
+      const row = positionToHoldingRow(
+        userId,
+        pos,
+        accountId,
+        accountNumber || label,
+        now
+      );
       if (row) holdingRows.push(row);
     }
 
@@ -237,7 +245,10 @@ function normalize(accounts: SchwabAccountDetail[]): {
     const cashTotal = mmf || cash;
     if (cashTotal > 0) {
       holdingRows.push({
-        id: deterministicId(`schwab-holding-${accountNumber || label}-SWVXX`),
+        id: deterministicId(
+          `schwab-holding-${userId}-${accountNumber || label}-SWVXX`
+        ),
+        user_id: userId,
         account_id: accountId,
         platform: "schwab",
         symbol: "SWVXX",
@@ -258,15 +269,6 @@ function normalize(accounts: SchwabAccountDetail[]): {
   return { accountRows, holdingRows, accountDiagnostics };
 }
 
-/**
- * Parse SCHWAB_ACCOUNT_NICKNAMES env var into a lookup.
- * Format: `ACCOUNT_NUMBER:Display Name:account_type, ...`
- * Key may be full account number or last-4 digits.
- * `account_type` is optional; must match the AccountType union if provided.
- *
- * Example:
- *   SCHWAB_ACCOUNT_NICKNAMES="9886:Individual Brokerage:brokerage,1949:Roth Contributory IRA:roth_ira"
- */
 function nicknamesFromEnv(): Record<
   string,
   { name: string; accountType?: AccountType }
@@ -280,9 +282,7 @@ function nicknamesFromEnv(): Record<
     const [key, name, typeStr] = parts;
     out[key] = {
       name,
-      accountType: typeStr
-        ? (typeStr as AccountType)
-        : undefined,
+      accountType: typeStr ? (typeStr as AccountType) : undefined,
     };
   }
   return out;
@@ -316,6 +316,7 @@ function defaultAccountName(
 }
 
 function positionToHoldingRow(
+  userId: string,
   pos: SchwabPosition,
   accountId: string,
   accountIdentifier: string,
@@ -335,7 +336,10 @@ function positionToHoldingRow(
   const description = pos.instrument?.description ?? "";
 
   return {
-    id: deterministicId(`schwab-holding-${accountIdentifier}-${symbol}`),
+    id: deterministicId(
+      `schwab-holding-${userId}-${accountIdentifier}-${symbol}`
+    ),
+    user_id: userId,
     account_id: accountId,
     platform: "schwab",
     symbol,
@@ -353,20 +357,6 @@ function positionToHoldingRow(
 }
 
 const round = (n: number) => Math.round(n * 100) / 100;
-
-function accountLabel(schwabType: string): string {
-  switch (schwabType) {
-    case "INDIVIDUAL":
-      return "Individual";
-    case "ROTH_IRA":
-    case "IRA":
-      return "Roth IRA";
-    case "TRADITIONAL_IRA":
-      return "Traditional IRA";
-    default:
-      return schwabType;
-  }
-}
 
 function mapAccountType(schwabType: string): AccountType {
   switch (schwabType) {
@@ -438,8 +428,7 @@ function inferSector(symbol: string, description: string): Sector {
     d.includes("index")
   )
     return "broad_market";
-  if (d.includes("technology") || s === "SCHG" || s === "QQQ")
-    return "technology";
+  if (d.includes("technology") || s === "SCHG" || s === "QQQ") return "technology";
   if (d.includes("semiconductor") || s === "SOXX" || s === "SMH")
     return "semiconductors";
   if (d.includes("health") || s === "XLV") return "healthcare";
@@ -449,20 +438,8 @@ function inferSector(symbol: string, description: string): Sector {
   if (d.includes("biotech")) return "biotech";
 
   const techStocks = [
-    "AAPL",
-    "MSFT",
-    "GOOGL",
-    "GOOG",
-    "META",
-    "AMZN",
-    "NVDA",
-    "TSLA",
-    "NFLX",
-    "CRM",
-    "ORCL",
-    "ADBE",
-    "INTC",
-    "AMD",
+    "AAPL", "MSFT", "GOOGL", "GOOG", "META", "AMZN", "NVDA", "TSLA",
+    "NFLX", "CRM", "ORCL", "ADBE", "INTC", "AMD",
   ];
   if (techStocks.includes(s)) return "technology";
   const healthStocks = ["JNJ", "UNH", "PFE", "ABBV", "MRK", "LLY"];

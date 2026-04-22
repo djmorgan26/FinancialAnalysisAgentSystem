@@ -7,18 +7,17 @@ import {
   createSnapshot,
 } from "@/lib/data-store";
 import { runAnalysis } from "@/lib/analysis";
+import { requireUser } from "@/lib/supabase/server";
 
-/**
- * GET /api/analysis
- * Returns the latest persisted analysis result, or 404 if none exists.
- */
+/** GET /api/analysis — latest persisted analysis for the signed-in user. */
 export async function GET() {
   try {
-    const analysis = await loadAnalysis();
+    const { user } = await requireUser();
+    const analysis = await loadAnalysis(user.id);
     if (!analysis) {
       return NextResponse.json(
         { error: "No analysis available. Trigger one via POST." },
-        { status: 404 },
+        { status: 404 }
       );
     }
     return NextResponse.json(analysis);
@@ -26,35 +25,30 @@ export async function GET() {
     console.error("[GET /api/analysis] Failed to load analysis:", error);
     return NextResponse.json(
       { error: "Failed to load analysis" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
 
-/**
- * POST /api/analysis
- * Runs a fresh analysis over the current financial data and user profile,
- * persists the result, creates a snapshot, and returns the analysis.
- * Works with or without imported data — falls back to profile defaults.
- */
+/** POST /api/analysis — run analysis for the signed-in user and snapshot. */
 export async function POST() {
   try {
+    const { user } = await requireUser();
     const [data, profile] = await Promise.all([
-      loadFinancialData(),
-      loadUserProfile(),
+      loadFinancialData(user.id),
+      loadUserProfile(user.id),
     ]);
 
     const analysis = runAnalysis(data, profile);
 
-    await Promise.all([saveAnalysis(analysis), createSnapshot(analysis)]);
+    await Promise.all([
+      saveAnalysis(user.id, analysis),
+      createSnapshot(user.id, analysis),
+    ]);
 
     return NextResponse.json(analysis);
   } catch (error) {
     console.error("[POST /api/analysis] Analysis failed:", error);
-    return NextResponse.json(
-      { error: "Analysis failed" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Analysis failed" }, { status: 500 });
   }
 }
-

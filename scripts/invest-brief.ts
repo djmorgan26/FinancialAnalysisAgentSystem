@@ -185,13 +185,19 @@ async function fetchQuotesBatch(
 async function main(): Promise<void> {
   await loadEnv();
   const humanMode = process.argv.includes("--human");
+  const userId = process.env.TARGET_USER_ID;
+  if (!userId) {
+    throw new Error(
+      "Set TARGET_USER_ID (your auth user_id) in the environment to run this script."
+    );
+  }
   const supabase = getSupabase();
 
   // ---------------- Load preferences ----------------
   const { data: prefRow, error: prefErr } = await supabase
     .from("investment_preferences")
     .select("*")
-    .eq("id", 1)
+    .eq("user_id", userId)
     .maybeSingle();
   if (prefErr) throw prefErr;
   if (!prefRow) {
@@ -232,8 +238,8 @@ async function main(): Promise<void> {
 
   const [{ data: accountRows, error: aErr }, { data: holdingRows, error: hErr }] =
     await Promise.all([
-      supabase.from("accounts").select("*"),
-      supabase.from("holdings").select("*"),
+      supabase.from("accounts").select("*").eq("user_id", userId),
+      supabase.from("holdings").select("*").eq("user_id", userId),
     ]);
   if (aErr) throw aErr;
   if (hErr) throw hErr;
