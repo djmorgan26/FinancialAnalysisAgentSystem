@@ -6,10 +6,14 @@ import { PageContainer, PageHeader } from "@/components/app/Page";
 import { Card, StatusBadge } from "@/components/app/Pill";
 import { requireUser } from "@/lib/supabase/server";
 import {
+  createSnapshot,
   getOnboardingComplete,
   loadAnalysis,
   loadFinancialData,
+  loadUserProfile,
+  saveAnalysis,
 } from "@/lib/data-store";
+import { runAnalysis } from "@/lib/analysis";
 
 export const dynamic = "force-dynamic";
 
@@ -17,12 +21,31 @@ export default async function DashboardPage() {
   const { user } = await requireUser();
   if (!(await getOnboardingComplete(user.id))) redirect("/onboarding");
 
-  const [analysis, data] = await Promise.all([
+  const [cachedAnalysis, data] = await Promise.all([
     loadAnalysis(user.id),
     loadFinancialData(user.id),
   ]);
 
+  // If the cached analysis is older than the newest account update, or if
+  // no cache exists and we have data, recompute once before rendering.
+  let analysis = cachedAnalysis;
   const hasData = data.accounts.length > 0;
+  const latestAccountUpdate = data.accounts.reduce(
+    (m, a) => (a.lastUpdated > m ? a.lastUpdated : m),
+    ""
+  );
+  const cacheStale =
+    hasData &&
+    (!cachedAnalysis ||
+      (analysis?.generatedAt ?? "") < latestAccountUpdate);
+  if (cacheStale) {
+    const profile = await loadUserProfile(user.id);
+    analysis = runAnalysis(data, profile);
+    await Promise.all([
+      saveAnalysis(user.id, analysis),
+      createSnapshot(user.id, analysis),
+    ]);
+  }
 
   return (
     <ShellWrapper>
@@ -44,8 +67,11 @@ function DashboardContent({
   analysis: Awaited<ReturnType<typeof loadAnalysis>>;
   data: Awaited<ReturnType<typeof loadFinancialData>>;
 }) {
-  const netWorth =
-    analysis?.netWorth ?? data.accounts.reduce((s, a) => s + a.balance, 0);
+  // Always prefer the live account sum over any cached analysis value —
+  // the cache can only lag, never lead.
+  const liveAssets = data.accounts.reduce((s, a) => s + a.balance, 0);
+  const liabilities = analysis?.totalLiabilities ?? 0;
+  const netWorth = liveAssets - liabilities;
 
   const topPositions = [...data.holdings]
     .sort((a, b) => b.currentValue - a.currentValue)
@@ -82,28 +108,28 @@ function DashboardContent({
           <div className="mono text-[40px] font-semibold mt-1 tracking-tight">
             ${Math.round(netWorth).toLocaleString()}
           </div>
-          {analysis && (
-            <div className="mt-2 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-[12px] text-[color:var(--text-muted)]">
-              <span>
-                Assets{" "}
-                <span className="mono text-[color:var(--text)]">
-                  ${Math.round(analysis.totalAssets).toLocaleString()}
-                </span>
+          <div className="mt-2 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-[12px] text-[color:var(--text-muted)]">
+            <span>
+              Assets{" "}
+              <span className="mono text-[color:var(--text)]">
+                ${Math.round(liveAssets).toLocaleString()}
               </span>
-              <span>
-                Liabilities{" "}
-                <span className="mono text-[color:var(--text)]">
-                  ${Math.round(analysis.totalLiabilities).toLocaleString()}
-                </span>
+            </span>
+            <span>
+              Liabilities{" "}
+              <span className="mono text-[color:var(--text)]">
+                ${Math.round(liabilities).toLocaleString()}
               </span>
+            </span>
+            {analysis?.savingsRate != null && (
               <span>
                 Savings rate{" "}
                 <span className="mono text-[color:var(--text)]">
-                  {((analysis.savingsRate ?? 0) * 100).toFixed(0)}%
+                  {analysis.savingsRate.toFixed(1)}%
                 </span>
               </span>
-            </div>
-          )}
+            )}
+          </div>
         </Card>
 
         <Card>

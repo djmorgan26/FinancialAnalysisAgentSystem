@@ -54,8 +54,20 @@ export function AssistantClient() {
           })),
         }),
       });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? "assistant failed");
+      const rawText = await res.text();
+      let body: { text?: string; tools?: { name: string; summary: string }[]; error?: string } = {};
+      if (rawText) {
+        try {
+          body = JSON.parse(rawText);
+        } catch {
+          throw new Error(
+            `Server returned non-JSON response (HTTP ${res.status}): ${rawText.slice(0, 200)}`
+          );
+        }
+      }
+      if (!res.ok) {
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
       setMessages((prev) => [
         ...prev,
         { role: "model", content: body.text || "(no response)", tools: body.tools },
