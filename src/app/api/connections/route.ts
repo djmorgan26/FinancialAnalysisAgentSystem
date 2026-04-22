@@ -35,8 +35,17 @@ export async function GET() {
     }
   }
 
-  // Coinbase
+  // Coinbase — attempt a live check if configured
   const coinbaseConfigured = coinbase.isConfigured();
+  let coinbaseConnected = false;
+  if (coinbaseConfigured) {
+    try {
+      await coinbase.getAccounts();
+      coinbaseConnected = true;
+    } catch {
+      coinbaseConnected = false;
+    }
+  }
 
   return NextResponse.json({
     schwab: schwabStatus,
@@ -46,7 +55,7 @@ export async function GET() {
     },
     coinbase: {
       configured: coinbaseConfigured,
-      connected: false, // Will be true after first successful fetch
+      connected: coinbaseConnected,
     },
   });
 }

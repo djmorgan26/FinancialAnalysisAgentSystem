@@ -7,6 +7,7 @@
 
 import fs from "fs/promises";
 import path from "path";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import * as fidelity from "../src/lib/importers/fidelity";
 import * as schwab from "../src/lib/importers/schwab";
 import * as robinhood from "../src/lib/importers/robinhood";
@@ -133,9 +134,94 @@ async function main() {
   await fs.writeFile(path.join(NORMALIZED_DIR, "financial-data.json"), JSON.stringify(data, null, 2));
 
   console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log(`  Done. ${data.accounts.length} accounts, ${data.transactions.length} transactions, ${data.holdings.length} holdings`);
+  console.log(`  Normalized. ${data.accounts.length} accounts, ${data.transactions.length} transactions, ${data.holdings.length} holdings`);
   console.log(`  Saved to data/normalized/financial-data.json`);
+
+  // Push non-Schwab platforms to Supabase. Schwab is API-driven — don't clobber.
+  try {
+    await loadEnv();
+    const supabase = getSupabase();
+    const pushedPlatforms: Platform[] = platforms.filter(
+      (p): p is Platform => p !== "schwab"
+    );
+    const hlds = data.holdings.filter((h) => pushedPlatforms.includes(h.platform));
+    // Only push accounts that are referenced by at least one holding. Skips
+    // ghost accounts that may linger in the normalized JSON from profile bootstrap.
+    const referencedAcctIds = new Set(hlds.map((h) => h.accountId));
+    const accts = data.accounts.filter(
+      (a) => pushedPlatforms.includes(a.platform) && referencedAcctIds.has(a.id)
+    );
+
+    if (accts.length > 0) {
+      const rows = accts.map((a) => ({
+        id: a.id,
+        platform: a.platform,
+        account_type: a.accountType,
+        name: a.name,
+        balance: a.balance,
+        currency: a.currency,
+        last_updated: a.lastUpdated,
+      }));
+      const { error } = await supabase.from("accounts").upsert(rows, { onConflict: "id" });
+      if (error) throw error;
+    }
+
+    if (hlds.length > 0) {
+      // Replace all non-Schwab holdings to match current CSV snapshot
+      const { error: delErr } = await supabase
+        .from("holdings")
+        .delete()
+        .in("platform", pushedPlatforms);
+      if (delErr) throw delErr;
+
+      const rows = hlds.map((h) => ({
+        id: h.id,
+        account_id: h.accountId,
+        platform: h.platform,
+        symbol: h.symbol,
+        name: h.name,
+        quantity: h.quantity,
+        cost_basis: h.costBasis,
+        current_price: h.currentPrice,
+        current_value: h.currentValue,
+        gain_loss: h.gainLoss,
+        gain_loss_percent: h.gainLossPercent,
+        asset_class: h.assetClass,
+        sector: h.sector,
+        last_updated: h.lastUpdated,
+      }));
+      const { error } = await supabase.from("holdings").insert(rows);
+      if (error) throw error;
+    }
+
+    console.log(`  Pushed to Supabase: ${accts.length} accounts, ${hlds.length} holdings (non-Schwab)`);
+  } catch (e) {
+    console.warn(`  ⚠ Supabase sync skipped: ${(e as Error).message}`);
+  }
+
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+}
+
+async function loadEnv(): Promise<void> {
+  try {
+    const raw = await fs.readFile(path.join(process.cwd(), ".env.local"), "utf-8");
+    for (const line of raw.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq < 0) continue;
+      const k = trimmed.slice(0, eq).trim();
+      const v = trimmed.slice(eq + 1).trim();
+      if (!(k in process.env)) process.env[k] = v;
+    }
+  } catch { /* optional */ }
+}
+
+function getSupabase(): SupabaseClient {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set");
+  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
 main().catch(console.error);

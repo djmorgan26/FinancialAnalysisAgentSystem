@@ -85,8 +85,8 @@ function inferAssetClass(symbol: string, description: string): AssetClass {
   const d = description.toLowerCase();
 
   if (
-    s === "SPAXX" || s === "FDRXX" || s === "FCASH" || s === "CORE" ||
-    d.includes("money market") || d.includes("government cash")
+    s === "SPAXX" || s === "FDRXX" || s === "FCASH" || s === "CORE" || s === "CASH" ||
+    d === "cash" || d.includes("money market") || d.includes("government cash")
   ) {
     return "cash";
   }

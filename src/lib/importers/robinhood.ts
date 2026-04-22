@@ -40,8 +40,10 @@ interface RobinhoodPositionRow {
   Name?: string;
   Description?: string;
   Quantity?: string;
+  Shares?: string;
   "Average Cost"?: string;
   "Current Price"?: string;
+  Price?: string;
   "Total Return"?: string;
   "Equity"?: string;
   "Percent Change"?: string;
@@ -170,13 +172,19 @@ function inferSector(symbol: string, description: string): Sector {
  */
 export function importAccounts(csvContent: string): Account[] {
   // Robinhood doesn't clearly delineate multiple accounts in CSV exports.
-  // We create a single brokerage account.
-  const rows = parseCSV<RobinhoodTransactionRow>(csvContent);
+  // We create a single brokerage account. Prefer positions-CSV (Equity column sum)
+  // over transactions-CSV (Amount sum) because most users export positions, and
+  // Amount-sum yields 0 for a positions-only CSV.
+  const posRows = parseCSV<RobinhoodPositionRow>(csvContent);
+  const posEquitySum = posRows.reduce(
+    (s, r) => s + parseDollar((r as { Equity?: string }).Equity ?? "0"),
+    0
+  );
 
-  // Estimate balance from net transaction amounts
-  let netAmount = 0;
-  for (const row of rows) {
-    netAmount += parseDollar(row["Amount"]);
+  let balance = posEquitySum;
+  if (balance === 0) {
+    const txRows = parseCSV<RobinhoodTransactionRow>(csvContent);
+    for (const row of txRows) balance += parseDollar(row["Amount"]);
   }
 
   return [
@@ -185,7 +193,7 @@ export function importAccounts(csvContent: string): Account[] {
       platform: "robinhood",
       accountType: "brokerage",
       name: "Robinhood Brokerage",
-      balance: netAmount,
+      balance,
       currency: "USD",
       lastUpdated: todayISO(),
     },
@@ -256,9 +264,9 @@ export function importHoldings(csvContent: string): Holding[] {
 
     if (!symbol) continue;
 
-    const quantity = parseQuantity(row["Quantity"]);
+    const quantity = parseQuantity(row["Quantity"] ?? row["Shares"]);
     const avgCost = parseDollar(row["Average Cost"]);
-    const currentPrice = parseDollar(row["Current Price"]);
+    const currentPrice = parseDollar(row["Current Price"] ?? row["Price"]);
     const equity = parseDollar(row["Equity"]);
     const totalReturn = parseDollar(row["Total Return"]);
 
