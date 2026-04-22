@@ -1,6 +1,12 @@
 #!/usr/bin/env tsx
-/** Reproduce the dashboard 500 with the real user's session. */
-import { createClient } from "@supabase/supabase-js";
+/**
+ * Smoke test: sign in as the dedicated TEST_USER and GET the dashboard.
+ *
+ * Requires TEST_USER_EMAIL + TEST_USER_PASSWORD in .env.local.
+ * Run `npx tsx scripts/ensure-test-user.ts` once to bootstrap the user.
+ *
+ * NEVER touches the real owner account.
+ */
 import { createServerClient } from "@supabase/ssr";
 import fs from "fs/promises";
 import path from "path";
@@ -23,57 +29,59 @@ async function loadEnv() {
 async function main() {
   await loadEnv();
   const base = process.argv[2] ?? "https://financial-analysis-agent-one.vercel.app";
-  const supabaseUrl = process.env.SUPABASE_URL!;
-  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-  // Sign in as the real user via a throwaway password. We set a temp pass,
-  // authenticate, hit the dashboard, then restore (not possible — so we'll
-  // have user pick a known password later; for diagnosis, just set it).
-  const admin = createClient(supabaseUrl, serviceRole, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
-  const targetEmail = "davidjmorgan26@gmail.com";
-  const tempPass = `diag-${Date.now()}-Xy9`;
-
-  const { data: ul } = await admin.auth.admin.listUsers();
-  const user = ul.users.find((u) => u.email === targetEmail);
-  if (!user) throw new Error(`user ${targetEmail} not found`);
-
-  await admin.auth.admin.updateUserById(user.id, { password: tempPass });
-  console.log("▸ Temporarily set a diagnostic password for the owner account.");
+  const email = process.env.TEST_USER_EMAIL;
+  const password = process.env.TEST_USER_PASSWORD;
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!email || !password || !supabaseUrl || !anonKey) {
+    console.error(
+      "Missing required env. Need TEST_USER_EMAIL, TEST_USER_PASSWORD, SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local."
+    );
+    console.error(
+      "Run: npx tsx scripts/ensure-test-user.ts to bootstrap the test user."
+    );
+    process.exit(1);
+  }
 
   const captured: { name: string; value: string }[] = [];
   const ssr = createServerClient(supabaseUrl, anonKey, {
     cookies: {
       getAll: () => captured,
-      setAll: (cs) => cs.forEach((c) => captured.push({ name: c.name, value: c.value })),
+      setAll: (cs) =>
+        cs.forEach((c) => captured.push({ name: c.name, value: c.value })),
     },
   });
-  const { error: sinErr } = await ssr.auth.signInWithPassword({
-    email: targetEmail,
-    password: tempPass,
-  });
-  if (sinErr) throw new Error(`sign-in failed: ${sinErr.message}`);
+  const { error: sinErr } = await ssr.auth.signInWithPassword({ email, password });
+  if (sinErr) {
+    console.error(
+      `sign-in failed: ${sinErr.message} — run ensure-test-user.ts to resync the password.`
+    );
+    process.exit(1);
+  }
   const cookieHeader = captured
     .map((c) => `${c.name}=${encodeURIComponent(c.value)}`)
     .join("; ");
 
-  console.log(`▸ GET ${base}/`);
+  console.log(`▸ Signed in as TEST_USER. GET ${base}/`);
   const res = await fetch(`${base}/`, {
     redirect: "manual",
     headers: { cookie: cookieHeader, accept: "text/html" },
   });
-  const raw = await res.text();
   console.log(`▸ HTTP ${res.status}`);
-  const short = raw.length > 4000 ? raw.slice(0, 4000) + "\n…(truncated)" : raw;
-  console.log(short);
-
-  console.log("\n▸ Clearing diagnostic password — set a new one via settings.");
+  const raw = await res.text();
+  if (res.status === 200) {
+    // Pull the net-worth hero out of the HTML if present.
+    const m = raw.match(/\$[0-9,]+(?:\.\d+)?/g);
+    if (m) console.log(`▸ $ figures on page: ${m.slice(0, 4).join(", ")}`);
+    console.log("\n✅ DASHBOARD RENDERING OK");
+  } else {
+    console.log(raw.slice(0, 600));
+    console.log("\n❌ Dashboard returned non-200");
+    process.exit(1);
+  }
 }
 
 main().catch((e) => {
-  console.error("verify-dashboard failed:", e);
+  console.error(e);
   process.exit(1);
 });

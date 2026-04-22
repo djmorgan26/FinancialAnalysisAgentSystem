@@ -18,15 +18,34 @@ npm run test:coinbase    # Smoke test CDP Ed25519 client
 ## Slash commands
 `.claude/commands/invest.md` — `/invest [optional context]` produces an actionable brief by running `npm run invest:brief` and analyzing the JSON.
 
+## Verification scripts (multi-user app)
+
+Use these when testing auth-gated features. **Never reset the owner's password** — always use the dedicated test user whose credentials live in `.env.local`:
+
+```bash
+# One-time (or when you need to reset the test user's state):
+npx tsx scripts/ensure-test-user.ts
+
+# Smoke tests — sign in as TEST_USER, hit production, assert 200:
+npx tsx scripts/verify-dashboard.ts    # GET / — confirms dashboard renders
+npx tsx scripts/verify-assistant.ts    # POST /api/assistant — confirms Gemini wiring
+```
+
+`TEST_USER_EMAIL` and `TEST_USER_PASSWORD` are in `.env.local`. `ensure-test-user.ts` creates the auth user (email-confirmed), resyncs the password if it drifted, and seeds a `user_profiles` row with `onboarding_complete = true` so the scripts don't get redirected to /onboarding. Base URL defaults to the production alias; pass a different URL as `argv[2]` for local testing.
+
+**Do NOT** write ad-hoc scripts that reset the owner's password (`davidjmorgan26@gmail.com`) to get a session. Extend `verify-*.ts` or `ensure-test-user.ts` instead.
+
 ## Source of truth per data type
+
+Everything is **per-user** now (keyed by `auth.users.id`). See `src/lib/supabase/{server,browser,admin}.ts` for the three client flavors.
 
 | Data | Lives in | Why |
 |---|---|---|
-| Accounts, holdings, transactions, snapshots, sync logs | Supabase tables | Cloud persistence, read-only for Vercel runtime |
-| Schwab OAuth tokens | Supabase `schwab_tokens` | Vercel FS is read-only |
-| Analysis cache | Supabase `analysis_cache` (singleton id=1) | Cheap to regenerate, OK to overwrite |
-| Investment preferences (contribution targets, risk, caps) | Supabase `investment_preferences` (singleton id=1) | Edited often; consumed by `/invest` |
-| Demographic profile (name, age, income, fixed expenses) | `config/user-profile.json` | Slow-moving, committed to git |
+| Accounts, holdings, transactions, snapshots, sync logs | Supabase tables with `user_id` FK + RLS | Per-user cloud persistence |
+| Schwab OAuth tokens | Supabase `schwab_tokens` (one row per user) | Tokens are per-user; `state` param carries user_id through OAuth |
+| Analysis cache | Supabase `analysis_cache` (one row per user) | Cheap to regenerate, dashboard auto-recomputes if stale |
+| Investment preferences | Supabase `investment_preferences` (one row per user) | Edited from Settings + AI assistant tools |
+| User profile (name, age, income, risk, horizon, sector bias, fixed expenses, payroll) | Supabase `user_profiles` (one row per user) | Edited from Settings; onboarding gate reads `onboarding_complete` |
 | Raw CSVs | `data/raw/{platform}/` | User drops them here |
 | Secrets | `.env.local` (gitignored) + Vercel envs | Standard |
 
@@ -58,11 +77,19 @@ npm run test:coinbase    # Smoke test CDP Ed25519 client
 
 Required:
 ```
+# Auth / DB
+NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY   # browser/middleware (@supabase/ssr)
+SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY                   # server admin client
+
+# Integrations
 SCHWAB_APP_KEY, SCHWAB_APP_SECRET, SCHWAB_CALLBACK_URL, SCHWAB_ACCOUNT_NICKNAMES
-SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 FINNHUB_API_KEY
-COINBASE_API_KEY, COINBASE_API_SECRET    (CDP Ed25519 format)
-GEMINI_API_KEY, GEMINI_PROJECT_ID        (for in-app assistant, Phase 2)
+COINBASE_API_KEY, COINBASE_API_SECRET                     # CDP Ed25519 format
+GEMINI_API_KEY                                            # gemini-2.5-flash (free tier)
+
+# Verification scripts (owner's local only — never committed, never deployed)
+TEST_USER_EMAIL, TEST_USER_PASSWORD                       # dedicated test user
+TARGET_USER_ID                                            # optional, for CLI scripts that push data
 ```
 
 See `.env.example` for template. Keys live in Vercel production/development envs as well.
