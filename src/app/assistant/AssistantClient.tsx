@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 import { Sparkles, Send } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Card } from "@/components/app/Pill";
 
 type Role = "user" | "model";
@@ -283,8 +285,138 @@ function Message({ m }: { m: UiMessage }) {
           ))}
         </div>
       )}
-      <div className="text-[13px] leading-relaxed whitespace-pre-wrap">
-        {m.content}
+      <div className="assistant-markdown text-[13px] leading-relaxed">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+            h1: ({ children }) => (
+              <h1 className="text-[15px] font-semibold mt-4 mb-2 first:mt-0">
+                {children}
+              </h1>
+            ),
+            h2: ({ children }) => (
+              <h2 className="text-[14px] font-semibold mt-4 mb-2 first:mt-0">
+                {children}
+              </h2>
+            ),
+            h3: ({ children }) => (
+              <h3 className="text-[13px] font-semibold mt-3 mb-1.5 first:mt-0 uppercase tracking-wider text-[color:var(--text-muted)]">
+                {children}
+              </h3>
+            ),
+            strong: ({ children }) => (
+              <strong
+                className="font-semibold"
+                style={{ color: "var(--text)" }}
+              >
+                {children}
+              </strong>
+            ),
+            em: ({ children }) => <em className="italic">{children}</em>,
+            ul: ({ children }) => (
+              <ul className="list-disc pl-5 mb-3 space-y-1 last:mb-0">
+                {children}
+              </ul>
+            ),
+            ol: ({ children }) => (
+              <ol className="list-decimal pl-5 mb-3 space-y-1 last:mb-0">
+                {children}
+              </ol>
+            ),
+            li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+            code: ({ children, className }) => {
+              const isBlock = className?.includes("language-");
+              if (isBlock) {
+                return (
+                  <code className="block text-[12px] mono">{children}</code>
+                );
+              }
+              return (
+                <code
+                  className="mono text-[12px] px-1 py-0.5 rounded"
+                  style={{
+                    background: "var(--bg-elevated)",
+                    border: "1px solid var(--border)",
+                    color: "var(--accent-strong)",
+                  }}
+                >
+                  {children}
+                </code>
+              );
+            },
+            pre: ({ children }) => (
+              <pre
+                className="mb-3 p-3 rounded-[6px] overflow-x-auto text-[12px] mono"
+                style={{
+                  background: "var(--bg-elevated)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                {children}
+              </pre>
+            ),
+            hr: () => (
+              <hr
+                className="my-3"
+                style={{ borderColor: "var(--border)" }}
+              />
+            ),
+            blockquote: ({ children }) => (
+              <blockquote
+                className="pl-3 my-2 italic"
+                style={{
+                  borderLeft: "2px solid var(--border)",
+                  color: "var(--text-muted)",
+                }}
+              >
+                {children}
+              </blockquote>
+            ),
+            a: ({ children, href }) => (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--accent-strong)" }}
+                className="underline"
+              >
+                {children}
+              </a>
+            ),
+            table: ({ children }) => (
+              <div className="overflow-x-auto mb-3">
+                <table
+                  className="text-[12px] border-collapse"
+                  style={{ border: "1px solid var(--border)" }}
+                >
+                  {children}
+                </table>
+              </div>
+            ),
+            th: ({ children }) => (
+              <th
+                className="px-2 py-1 text-left font-semibold"
+                style={{
+                  border: "1px solid var(--border)",
+                  background: "var(--bg-elevated)",
+                }}
+              >
+                {children}
+              </th>
+            ),
+            td: ({ children }) => (
+              <td
+                className="px-2 py-1"
+                style={{ border: "1px solid var(--border)" }}
+              >
+                {children}
+              </td>
+            ),
+          }}
+        >
+          {m.content}
+        </ReactMarkdown>
       </div>
     </div>
   );
