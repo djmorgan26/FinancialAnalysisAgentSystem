@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
 import { AuthShell, AuthField, AuthAltLink } from "@/components/ui/AuthShell";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 
 export default function SignUpPage() {
   return (
@@ -97,24 +98,20 @@ function SignUpForm() {
           label="Password"
           hint="Minimum 8 characters. Use something you don't use elsewhere."
         >
-          <input
-            type="password"
+          <PasswordInput
             required
             autoComplete="new-password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="input input-mono"
+            onChange={setPassword}
             placeholder="••••••••••"
           />
         </AuthField>
         <AuthField label="Confirm password">
-          <input
-            type="password"
+          <PasswordInput
             required
             autoComplete="new-password"
             value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            className="input input-mono"
+            onChange={setConfirm}
             placeholder="••••••••••"
           />
         </AuthField>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
 import { Card } from "@/components/app/Pill";
 import { PageHeader } from "@/components/app/Page";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 
 export function AccountForm({ email }: { email: string }) {
   const router = useRouter();
@@ -84,11 +85,10 @@ export function AccountForm({ email }: { email: string }) {
               New password
             </label>
             <div className="flex gap-2">
-              <input
-                type="password"
-                className="input input-mono"
+              <PasswordInput
+                autoComplete="new-password"
                 value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
+                onChange={setNewPassword}
                 placeholder="at least 8 characters"
               />
               <button

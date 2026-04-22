@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
 import { AuthShell, AuthField, AuthAltLink } from "@/components/ui/AuthShell";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 
 export default function SignInPage() {
   return (
@@ -66,13 +67,11 @@ function SignInForm() {
           />
         </AuthField>
         <AuthField label="Password">
-          <input
-            type="password"
+          <PasswordInput
             required
             autoComplete="current-password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="input input-mono"
+            onChange={setPassword}
             placeholder="••••••••••"
           />
         </AuthField>
