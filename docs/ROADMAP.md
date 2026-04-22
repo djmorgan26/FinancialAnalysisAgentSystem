@@ -1,12 +1,14 @@
-# Roadmap — v2.0 phased
+# Roadmap
 
-**Status**: Draft | **Last updated**: 2026-04-22
+**Last updated**: 2026-04-22
 
 Four phases. Phase 1 is "solo-ready for David," Phase 3 is "public beta." Each phase has **exit criteria** — the next phase doesn't start until the previous one is actually done. No calendar estimates here; phases ship when the criteria are met.
 
+Phases 1 and 2 have landed; active work is now in Phase 3 territory.
+
 ---
 
-## Phase 1 — Solo MVP (strangler-fig refactor + new UI)
+## Phase 1 — Solo MVP (strangler-fig refactor + new UI) ✅ shipped
 
 **Goal**: Daily `/invest` workflow runs in under 30 seconds with full-picture data. Dashboard clearly shows what's connected, what's CSV-based, what's coming. Preferences editable without SQL. Code is organized around the unified `DataSource` interface from top to bottom.
 
@@ -67,7 +69,7 @@ Four phases. Phase 1 is "solo-ready for David," Phase 3 is "public beta." Each p
 
 ---
 
-## Phase 2 — Friend-usable
+## Phase 2 — Friend-usable ✅ shipped
 
 **Goal**: A friend can fork the repo, follow `docs/ONBOARDING.md`, and be running their own dashboard with their own accounts end-to-end. Or if we self-host a shared instance, they sign up and get the same.
 
@@ -99,7 +101,7 @@ Four phases. Phase 1 is "solo-ready for David," Phase 3 is "public beta." Each p
 
 ---
 
-## Phase 3 — Public beta
+## Phase 3 — Public beta (active)
 
 **Goal**: Anyone can sign up at `app.example.com` and trust it with their financial data. We can defend our security posture to a smart skeptic.
 

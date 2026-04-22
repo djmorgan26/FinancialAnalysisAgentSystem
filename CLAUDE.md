@@ -1,6 +1,6 @@
 # Financial Analysis Agent System
 
-Personal finance dashboard with live integrations, investment analysis, and AI-driven recommendations. Solo today, multi-user later. See `docs/PRD_v2.md`.
+Personal finance dashboard with live integrations, investment analysis, and AI-driven recommendations. Multi-user (Supabase Auth + RLS); invite-only today, public later. See `docs/PRD.md`.
 
 ## Stack
 Next.js 16 · TypeScript · Tailwind · Supabase (Postgres + RLS) · Recharts · deployed on Vercel.
@@ -95,11 +95,11 @@ TARGET_USER_ID                                            # optional, for CLI sc
 See `.env.example` for template. Keys live in Vercel production/development envs as well.
 
 ## Docs
-- `docs/PRD_v2.md` — product PRD (non-technical)
-- `docs/ARCHITECTURE_v2.md` — technical architecture (target)
+- `docs/PRD.md` — product PRD (non-technical)
+- `docs/ARCHITECTURE.md` — technical architecture
 - `docs/ROADMAP.md` — phased plan
+- `docs/DATA_SOURCES.md` — CSV export instructions per platform
 - `docs/SCHWAB_SETUP.md` — Schwab developer app setup (for forking users)
-- `docs/ARCHITECTURE.md` — legacy, pre-Supabase; superseded by ARCHITECTURE_v2
 
 ## When to fetch what (guidance for the AI)
 

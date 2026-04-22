@@ -1,78 +1,63 @@
 # Financial Analysis Agent System
 
-A self-contained personal finance intelligence system that aggregates financial data from multiple platforms, analyzes spending and investments, and produces a dashboard with actionable strategy.
+A multi-user personal finance dashboard that aggregates accounts across brokerages, banks, and crypto exchanges, and produces specific, actionable investment recommendations — not generic advice.
 
-## What It Does
+Deployed at [financial-analysis-agent-one.vercel.app](https://financial-analysis-agent-one.vercel.app).
 
-- **Aggregates** data from Fidelity, Schwab, Robinhood, Coinbase, Chase, and Citi
-- **Computes** net worth, cash flow, savings rate, and spending breakdowns
-- **Analyzes** investment allocation, sector exposure, and portfolio overlaps
-- **Generates** DCA strategy, budget targets, and actionable insights
-- **Displays** everything in a clean, dark-themed dashboard
+## What it does
 
-## Quick Start
+- **Aggregates** live data from Schwab (OAuth), Coinbase (CDP), and Finnhub (market data); imports CSVs from Fidelity, Robinhood, Chase, and Citi
+- **Analyzes** net worth, allocation, sector exposure, cash drag, and today's movers
+- **Recommends** specific buys (`/invest` Claude Code command) and answers questions in-app (Gemini assistant) with read/write access to your preferences
+- **Persists** everything per-user in Supabase with RLS; multi-user invite-only today
+
+## Stack
+
+Next.js 16 (App Router) · TypeScript · Tailwind · Supabase (Postgres + Auth + RLS) · Recharts · deployed on Vercel.
+
+## Quick start (local dev)
 
 ```bash
-# 1. Install dependencies
 npm install
-
-# 2. Configure your profile
-cp config/user-profile.template.json config/user-profile.json
-# Edit config/user-profile.json with your details
-
-# 3. Export CSVs from your financial platforms
-# See docs/DATA_SOURCES.md for step-by-step instructions
-# Drop CSVs into data/raw/{platform}/
-
-# 4. Run the full pipeline
-npm run update
-
-# 5. Start the dashboard
-npm run dev
-# Open http://localhost:3000
+cp .env.example .env.local   # fill in Supabase, Schwab, Coinbase, Finnhub, Gemini keys
+npm run dev                  # http://localhost:3000
 ```
+
+First run creates your account via the sign-up page and walks you through onboarding (profile, preferences, first connection).
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `npm run update` | Full pipeline: import CSVs → analyze → generate insights |
-| `npm run import` | Import/merge CSVs from `data/raw/` |
-| `npm run analyze` | Run analysis on existing data |
-| `npm run dev` | Start the dashboard |
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Dashboard on `localhost:3000` |
+| `npm run import` | CSV (non-Schwab) → Supabase |
+| `npm run analyze` | Run analysis pipeline |
+| `npm run update` | import + analyze |
+| `npm run invest:brief` | Build the `/invest` data bundle |
+| `npm run test:coinbase` | Smoke test CDP Ed25519 client |
 
-## Supported Platforms
+## Connecting platforms
 
-| Platform | Account Types | Data |
-|----------|--------------|------|
-| Fidelity | Roth 401(k), BrokerageLink | Positions, transactions |
-| Schwab | Brokerage, Roth IRA, Savings | Positions, transactions |
-| Robinhood | Stocks, ETFs | Positions, transactions |
-| Coinbase | Crypto | Transactions, holdings |
-| Chase | Credit card | Transactions |
-| Citi | Credit card | Transactions |
+- **Schwab** — OAuth via `/connections`. Requires a Schwab Individual Developer app; see [docs/SCHWAB_SETUP.md](docs/SCHWAB_SETUP.md).
+- **Coinbase** — Paste CDP API key + secret (Ed25519) in `/connections`.
+- **Finnhub** — Free API key for live quotes.
+- **Fidelity / Robinhood / Chase / Citi** — CSV upload. Export instructions: [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md).
 
-## For New Users
+## Two AI layers
 
-1. Copy `config/user-profile.template.json` → `config/user-profile.json`
-2. Fill in your profile, accounts, expenses, and preferences
-3. See `prompts/analysis-template.md` for a guided template
-4. Follow `docs/DATA_SOURCES.md` for CSV export instructions
-5. Run `npm run update` and open the dashboard
+- **`/invest` (Claude Code)** — deep reasoning slash command for the owner; reads Supabase + Finnhub, emits actionable buy/rebalance recommendations.
+- **In-app assistant (Gemini)** — `/assistant` route + floating chat. Can read your portfolio/preferences and, on confirmation, write back to `investment_preferences` and `user_profiles`.
 
-## Portability
-
-This system is fully self-contained. To share it:
-
-```bash
-# Exclude node_modules and personal data
-zip -r finance-system.zip . -x "node_modules/*" "data/raw/*" "data/normalized/*" "data/snapshots/*" "config/user-profile.json"
-```
-
-The recipient drops it in their workspace, fills in their config, adds their CSVs, and runs `npm run update`.
+Both honor the same disclaimers and the same preferences row.
 
 ## Documentation
 
-- [Architecture](docs/ARCHITECTURE.md) — System design and data flow
-- [Data Sources](docs/DATA_SOURCES.md) — CSV export instructions per platform
-- [Analysis Template](prompts/analysis-template.md) — Guided prompt template
+- [PRD](docs/PRD.md) — product vision, users, feature matrix
+- [Architecture](docs/ARCHITECTURE.md) — system design, data model, security posture
+- [Roadmap](docs/ROADMAP.md) — shipped phases and what's next
+- [Data sources](docs/DATA_SOURCES.md) — CSV export instructions per platform
+- [Schwab setup](docs/SCHWAB_SETUP.md) — developer-app registration guide
+
+## Agent tooling
+
+This repo ships a `.claude/skills/` directory with slash commands for common workflows: `verify`, `dev`, `push`. They encode the repo-specific patterns (TEST_USER auth, port-3000 recovery, secret scanning) so Claude Code sessions stay consistent.

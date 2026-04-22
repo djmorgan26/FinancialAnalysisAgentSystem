@@ -1,8 +1,8 @@
-# Product Requirements — v2.0
+# Product Requirements
 
-**Status**: Draft | **Owner**: David Morgan | **Last updated**: 2026-04-22
+**Owner**: David Morgan | **Last updated**: 2026-04-22
 
-This is the non-technical product PRD. For the technical architecture see [ARCHITECTURE_v2.md](./ARCHITECTURE_v2.md). For phasing and priorities see [ROADMAP.md](./ROADMAP.md).
+Non-technical product PRD. For technical architecture see [ARCHITECTURE.md](./ARCHITECTURE.md). For phasing and priorities see [ROADMAP.md](./ROADMAP.md).
 
 ## Vision
 
@@ -61,22 +61,23 @@ The UI's Connections page must make this transparent. Users should never wonder 
 
 ### Analysis features
 
-| Feature | Phase 1 (MVP) | Phase 2 | Phase 3 |
-|---|---|---|---|
-| Net-worth dashboard | ✅ | | |
-| Asset allocation chart | ✅ | | |
-| Sector exposure | ✅ | | |
-| Daily movers | ✅ | | |
-| `/invest` recommendations | ✅ | | |
-| TLH candidate flags | ✅ | | |
-| Snapshot history | ✅ | | |
-| Contribution tracking (Roth, 401k) | ✅ | | |
-| In-app Gemini chat | | ✅ | |
-| Goal-based planning ("retire at X") | | ✅ | |
-| Spending analysis | | ✅ (requires CC integration) | |
-| Tax document prep | | | ✅ |
-| Multi-user accounts | | | ✅ |
-| Shared portfolios (spouse) | | | ✅ |
+| Feature | Status |
+|---|---|
+| Net-worth dashboard | shipped |
+| Asset allocation chart | shipped |
+| Sector exposure | shipped |
+| Daily movers | shipped |
+| `/invest` recommendations | shipped |
+| TLH candidate flags | shipped |
+| Snapshot history | shipped |
+| Contribution tracking (Roth, 401k) | shipped |
+| In-app Gemini chat (with preference-writing tools) | shipped |
+| Multi-user auth + RLS | shipped |
+| Onboarding flow | shipped |
+| Goal-based planning ("retire at X") | planned |
+| Spending analysis | planned (needs Plaid) |
+| Tax document prep | planned |
+| Shared portfolios (spouse) | planned |
 
 ## User flows
 
