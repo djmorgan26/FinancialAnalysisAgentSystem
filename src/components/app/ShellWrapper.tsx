@@ -1,9 +1,6 @@
 import { requireUser } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import {
-  getOnboardingComplete,
-  loadAnalysis,
-} from "@/lib/data-store";
+import { getOnboardingComplete, loadFinancialData } from "@/lib/data-store";
 import { AppShell } from "./Shell";
 
 export async function ShellWrapper({
@@ -25,13 +22,16 @@ export async function ShellWrapper({
     if (!done) redirect("/onboarding");
   }
 
-  const analysis = await loadAnalysis(user.id);
+  // Live account sum — never cached, never stale.
+  const data = await loadFinancialData(user.id);
+  const netWorth = data.accounts.reduce((s, a) => s + a.balance, 0);
+
   const email = user.email ?? null;
   const initial = (email?.[0] ?? "•").toUpperCase();
 
-  const netWorthPill = analysis
+  const netWorthPill = data.accounts.length
     ? {
-        value: `$${Math.round(analysis.netWorth).toLocaleString()}`,
+        value: `$${Math.round(netWorth).toLocaleString()}`,
         delta: undefined,
         tone: "neutral" as const,
       }
