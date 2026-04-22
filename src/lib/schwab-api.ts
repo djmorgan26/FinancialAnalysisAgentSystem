@@ -11,8 +11,7 @@
  *   4. Copy App Key + Secret into .env.local
  */
 
-import { promises as fs } from "fs";
-import path from "path";
+import { getSupabase } from "./supabase";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -25,13 +24,6 @@ const CALLBACK_URL =
   process.env.SCHWAB_CALLBACK_URL || "http://localhost:3000/api/schwab/callback";
 const APP_KEY = process.env.SCHWAB_APP_KEY || "";
 const APP_SECRET = process.env.SCHWAB_APP_SECRET || "";
-
-// Token persistence path
-const TOKEN_PATH = path.join(
-  process.cwd(),
-  "config",
-  ".schwab-tokens.json"
-);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -113,17 +105,42 @@ export interface SchwabTransaction {
 // ---------------------------------------------------------------------------
 
 async function loadTokens(): Promise<SchwabTokens | null> {
-  try {
-    const raw = await fs.readFile(TOKEN_PATH, "utf-8");
-    return JSON.parse(raw) as SchwabTokens;
-  } catch {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("schwab_tokens")
+    .select("access_token, refresh_token, expires_at, refresh_expires_at")
+    .eq("id", 1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Failed to load Schwab tokens from Supabase:", error);
     return null;
   }
+  if (!data) return null;
+  return {
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+    expires_at: Number(data.expires_at),
+    refresh_expires_at: Number(data.refresh_expires_at),
+  };
 }
 
 async function saveTokens(tokens: SchwabTokens): Promise<void> {
-  await fs.mkdir(path.dirname(TOKEN_PATH), { recursive: true });
-  await fs.writeFile(TOKEN_PATH, JSON.stringify(tokens, null, 2), "utf-8");
+  const supabase = getSupabase();
+  const { error } = await supabase.from("schwab_tokens").upsert(
+    {
+      id: 1,
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expires_at: tokens.expires_at,
+      refresh_expires_at: tokens.refresh_expires_at,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "id" }
+  );
+  if (error) {
+    throw new Error(`Failed to save Schwab tokens: ${error.message}`);
+  }
 }
 
 function basicAuthHeader(): string {

@@ -12,6 +12,7 @@
     "update": "tsx scripts/update.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.104.0",
     "date-fns": "^4.1.0",
     "next": "16.2.3",
     "papaparse": "^5.5.3",
