@@ -39,12 +39,20 @@ export default async function DashboardPage() {
     (!cachedAnalysis ||
       (analysis?.generatedAt ?? "") < latestAccountUpdate);
   if (cacheStale) {
-    const profile = await loadUserProfile(user.id);
-    analysis = runAnalysis(data, profile);
-    await Promise.all([
-      saveAnalysis(user.id, analysis),
-      createSnapshot(user.id, analysis),
-    ]);
+    try {
+      const profile = await loadUserProfile(user.id);
+      const fresh = runAnalysis(data, profile);
+      await saveAnalysis(user.id, fresh);
+      // Snapshot is opportunistic — failure shouldn't block the dashboard.
+      createSnapshot(user.id, fresh).catch((err) =>
+        console.error("[dashboard] createSnapshot failed:", err)
+      );
+      analysis = fresh;
+    } catch (err) {
+      // Recompute failed — fall back to the cached (or null) analysis so
+      // the dashboard still renders with live account sums.
+      console.error("[dashboard] analysis recompute failed:", err);
+    }
   }
 
   return (
