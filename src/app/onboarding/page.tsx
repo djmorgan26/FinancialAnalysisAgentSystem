@@ -42,9 +42,6 @@ export default function OnboardingPage() {
   const [rothYtd, setRothYtd] = useState("0");
   const [coreMin, setCoreMin] = useState("50");
 
-  // Step 4 — confirm
-  const [claimLegacy, setClaimLegacy] = useState(false);
-
   function toggleSector(s: string) {
     setSectors((prev) =>
       prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
@@ -69,7 +66,6 @@ export default function OnboardingPage() {
           rothIraAnnualTarget: rothTarget ? Number(rothTarget) : undefined,
           rothIraYtdContributed: rothYtd ? Number(rothYtd) : undefined,
           coreAllocationMinPercent: coreMin ? Number(coreMin) : undefined,
-          claimLegacyData: claimLegacy,
         }),
       });
       if (!res.ok) {
@@ -364,32 +360,6 @@ export default function OnboardingPage() {
                   {coreMin}%
                 </div>
               </div>
-
-              <label
-                className="mt-5 flex items-start gap-3 p-3 rounded-md cursor-pointer"
-                style={{
-                  background: "var(--bg-inset)",
-                  border: "1px dashed var(--border)",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={claimLegacy}
-                  onChange={(e) => setClaimLegacy(e.target.checked)}
-                  className="mt-0.5"
-                />
-                <div>
-                  <div className="text-[12.5px] font-medium">
-                    Claim legacy data
-                  </div>
-                  <div className="text-[11px] text-[color:var(--text-muted)] mt-0.5">
-                    If you&rsquo;re the original single-user owner and there are
-                    orphaned rows in the database (from before auth existed),
-                    check this to take ownership. Safe to leave off for new
-                    accounts.
-                  </div>
-                </div>
-              </label>
 
               {err && (
                 <div

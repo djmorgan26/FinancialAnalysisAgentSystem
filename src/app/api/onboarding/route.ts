@@ -4,7 +4,6 @@ import {
   saveUserProfile,
   saveInvestmentPreferences,
 } from "@/lib/data-store";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 interface OnboardingPayload {
   name: string;
@@ -17,7 +16,6 @@ interface OnboardingPayload {
   rothIraAnnualTarget?: number;
   rothIraYtdContributed?: number;
   coreAllocationMinPercent?: number;
-  claimLegacyData?: boolean;
 }
 
 export async function POST(req: NextRequest) {
@@ -48,31 +46,6 @@ export async function POST(req: NextRequest) {
     rothIraYtdContributed: body.rothIraYtdContributed,
     coreAllocationMinPercent: body.coreAllocationMinPercent,
   });
-
-  // Optional legacy claim — move any rows with NULL user_id to this user.
-  // One-time migration for the original single-user data that predates auth.
-  if (body.claimLegacyData) {
-    const supabase = getSupabaseAdmin();
-    const tables = [
-      "accounts",
-      "holdings",
-      "transactions",
-      "snapshots",
-      "sync_logs",
-      "schwab_tokens",
-      "analysis_cache",
-      "investment_preferences",
-    ];
-    for (const table of tables) {
-      const { error } = await supabase
-        .from(table)
-        .update({ user_id: userId })
-        .is("user_id", null);
-      if (error) {
-        console.warn(`[onboarding] failed to claim ${table}:`, error.message);
-      }
-    }
-  }
 
   return NextResponse.json({ ok: true });
 }

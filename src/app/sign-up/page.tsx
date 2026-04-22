@@ -22,13 +22,11 @@ function SignUpForm() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setInfo(null);
 
     if (password.length < 8) {
       setError("Password must be at least 8 characters.");
@@ -40,27 +38,33 @@ function SignUpForm() {
     }
 
     setLoading(true);
-    const supabase = getSupabaseBrowser();
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
-      },
-    });
-    if (signUpError) {
-      setError(signUpError.message);
-      setLoading(false);
-      return;
-    }
-    if (data.session) {
-      // Email confirmation disabled → we're signed in immediately.
+    try {
+      const createRes = await fetch("/api/auth/sign-up", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const createBody = await createRes.json().catch(() => ({}));
+      if (!createRes.ok) {
+        setError(createBody.error ?? "Failed to create account.");
+        setLoading(false);
+        return;
+      }
+
+      const supabase = getSupabaseBrowser();
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (signInError) {
+        setError(signInError.message);
+        setLoading(false);
+        return;
+      }
       router.replace(next);
       router.refresh();
-    } else {
-      setInfo(
-        "Check your email to confirm your account. Once confirmed you'll be redirected back here."
-      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unexpected error");
       setLoading(false);
     }
   }
@@ -125,18 +129,6 @@ function SignUpForm() {
             }}
           >
             {error}
-          </div>
-        )}
-        {info && (
-          <div
-            className="mb-3 text-[12px] px-3 py-2 rounded"
-            style={{
-              background: "var(--info-soft)",
-              color: "var(--info)",
-              border: "1px solid color-mix(in oklab, var(--info) 40%, transparent)",
-            }}
-          >
-            {info}
           </div>
         )}
 
