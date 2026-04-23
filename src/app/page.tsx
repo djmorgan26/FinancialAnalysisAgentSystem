@@ -18,6 +18,7 @@ import {
 } from "@/lib/data-store";
 import { runAnalysis } from "@/lib/analysis";
 import { resolveClassifications } from "@/lib/classification";
+import { applyEmergencyFundReconciliation } from "@/lib/emergency-fund-reconcile";
 
 export const dynamic = "force-dynamic";
 
@@ -25,12 +26,26 @@ export default async function DashboardPage() {
   const { user } = await requireUser();
   if (!(await getOnboardingComplete(user.id))) redirect("/onboarding");
 
-  const [cachedAnalysis, data, profile, preferences] = await Promise.all([
+  const [cachedAnalysis, rawData, profile, preferences] = await Promise.all([
     loadAnalysis(user.id),
     loadFinancialData(user.id),
     loadUserProfile(user.id),
     loadInvestmentPreferences(user.id),
   ]);
+
+  // Apply the user's emergency-fund override before anything else sees the
+  // data: bump the EF account to the declared balance and debit the same
+  // amount from same-platform non-EF cash pools (broker transfers can lag,
+  // so without the debit we'd double-count).
+  const {
+    accounts: recAccounts,
+    holdings: recHoldings,
+    synthesized: efSynthesized,
+  } = applyEmergencyFundReconciliation(rawData.accounts, rawData.holdings, {
+    overrideAmount: preferences.emergencyFundCurrentOverride,
+    accountIds: preferences.emergencyFundAccountIds,
+  });
+  const data = { ...rawData, accounts: recAccounts, holdings: recHoldings };
 
   // If the cached analysis is older than the newest account update, or if
   // no cache exists and we have data, recompute once before rendering.
@@ -40,10 +55,16 @@ export default async function DashboardPage() {
     (m, a) => (a.lastUpdated > m ? a.lastUpdated : m),
     ""
   );
+  // If the EF override produced a different effective balance than what the
+  // cache was computed against, force a recompute — the cache can't detect
+  // preference-driven shifts on its own.
+  const cachedEfCurrent = cachedAnalysis?.strategy?.emergencyFundCurrent ?? 0;
+  const efDrifted = efSynthesized > 0 && Math.abs(cachedEfCurrent - efSynthesized) > 1;
   const cacheStale =
     hasData &&
     (!cachedAnalysis ||
-      (analysis?.generatedAt ?? "") < latestAccountUpdate);
+      (analysis?.generatedAt ?? "") < latestAccountUpdate ||
+      efDrifted);
   if (cacheStale) {
     try {
       const classificationMap = await resolveClassifications(

@@ -268,35 +268,38 @@ function normalize(
       holdingRows.push(row);
     }
 
-    // Synthesize a cash-sweep holding from currentBalances.moneyMarketFund
-    // ONLY when no real MMF position already covers it. Schwab sometimes
-    // reports the sweep balance here and sometimes as a real position;
-    // double-counting would inflate the account value.
-    if (!hasRealMMFPosition) {
-      const mmf = sa.currentBalances?.moneyMarketFund || 0;
-      const cash = sa.currentBalances?.totalCash || 0;
-      const cashTotal = mmf || cash;
-      if (cashTotal > 0) {
-        holdingRows.push({
-          id: deterministicId(
-            `schwab-holding-${userId}-${accountNumber || label}-CASH_SWEEP`
-          ),
-          user_id: userId,
-          account_id: accountId,
-          platform: "schwab",
-          symbol: "CASH",
-          name: "Schwab Cash Sweep (MMF)",
-          quantity: cashTotal,
-          cost_basis: cashTotal,
-          current_price: 1,
-          current_value: cashTotal,
-          gain_loss: 0,
-          gain_loss_percent: 0,
-          asset_class: "cash",
-          sector: "other",
-          last_updated: now,
-        });
-      }
+    // Record uninvested settled cash (cashBalance) as its own holding row.
+    // This is distinct from a real MMF position (SWVXX etc.) — both can
+    // coexist. liquidationValue = longMarketValue + MMF positions + cashBalance,
+    // so if we only capture positions we under-report cash by cashBalance.
+    // Fall back to moneyMarketFund/totalCash ONLY when no real MMF position
+    // and no cashBalance is reported (older account shapes).
+    const cashBalance = sa.currentBalances?.cashBalance || 0;
+    const fallbackCash = hasRealMMFPosition
+      ? 0
+      : (sa.currentBalances?.moneyMarketFund || 0) ||
+        (sa.currentBalances?.totalCash || 0);
+    const uninvestedCash = cashBalance > 0 ? cashBalance : fallbackCash;
+    if (uninvestedCash > 0) {
+      holdingRows.push({
+        id: deterministicId(
+          `schwab-holding-${userId}-${accountNumber || label}-CASH_SWEEP`
+        ),
+        user_id: userId,
+        account_id: accountId,
+        platform: "schwab",
+        symbol: "CASH",
+        name: "Schwab Uninvested Cash",
+        quantity: uninvestedCash,
+        cost_basis: uninvestedCash,
+        current_price: 1,
+        current_value: uninvestedCash,
+        gain_loss: 0,
+        gain_loss_percent: 0,
+        asset_class: "cash",
+        sector: "other",
+        last_updated: now,
+      });
     }
   }
 

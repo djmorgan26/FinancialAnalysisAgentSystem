@@ -14,6 +14,7 @@ import fs from "fs/promises";
 import path from "path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { UserProfile } from "../src/lib/types";
+import { applyEmergencyFundReconciliation } from "../src/lib/emergency-fund-reconcile";
 
 const FINNHUB_BASE = "https://finnhub.io/api/v1";
 
@@ -275,13 +276,29 @@ async function main(): Promise<void> {
     gain_loss_percent: num(r.gain_loss_percent),
   }));
 
-  const accountById = new Map(accounts.map((a) => [a.id, a]));
+  // Apply documented emergency-fund balance: synthesize the override as a cash
+  // holding in the EF account(s) AND debit the same amount from same-platform
+  // non-EF cash holdings (the broker hasn't reflected the transfer yet, so
+  // without the debit we'd double-count).
+  const efAccountIds = new Set<string>(
+    (prefRow.emergency_fund_account_ids ?? []) as string[]
+  );
+  const reconciled = applyEmergencyFundReconciliation(accounts, holdings, {
+    overrideAmount: prefRow.emergency_fund_current_override
+      ? num(prefRow.emergency_fund_current_override)
+      : null,
+    accountIds: prefRow.emergency_fund_account_ids ?? [],
+  });
+  const reconciledAccounts = reconciled.accounts;
+  const reconciledHoldings = reconciled.holdings;
+
+  const accountById = new Map(reconciledAccounts.map((a) => [a.id, a]));
 
   // ---------------- Fetch live prices ----------------
   const finnhubToken = process.env.FINNHUB_API_KEY;
   const equitySymbols = Array.from(
     new Set(
-      holdings
+      reconciledHoldings
         .filter(
           (h) =>
             h.asset_class === "us_equity" || h.asset_class === "intl_equity"
@@ -300,7 +317,7 @@ async function main(): Promise<void> {
   // ---------------- Build per-position briefs ----------------
   const coreSet = new Set(prefs.core_tickers.map((t) => t.toUpperCase()));
 
-  const positions: PositionBrief[] = holdings.map((h) => {
+  const positions: PositionBrief[] = reconciledHoldings.map((h) => {
     const acct = accountById.get(h.account_id);
     // Never apply a Finnhub stock quote to non-equity asset classes. Symbols
     // like "CASH", "BTC", "ETH" will match real tickers (Pathward Financial,
@@ -364,7 +381,7 @@ async function main(): Promise<void> {
   );
 
   // ---------------- Per-account view ----------------
-  const accountViews = accounts.map((a) => {
+  const accountViews = reconciledAccounts.map((a) => {
     const posInAcct = positions.filter((p) => p.accountId === a.id);
     const value = posInAcct.reduce((s, p) => s + bestValue(p), 0);
     const cashInAcct = posInAcct
@@ -480,8 +497,10 @@ async function main(): Promise<void> {
     }
   }
 
-  // Cash excess
-  const brokerage = accountViews.find((a) => a.accountType === "brokerage");
+  // Cash excess — exclude emergency-fund accounts (those dollars aren't dry powder)
+  const brokerage = accountViews.find(
+    (a) => a.accountType === "brokerage" && !efAccountIds.has(a.id)
+  );
   if (brokerage) {
     const excessCash = brokerage.cashHolding - prefs.cash_floor_brokerage;
     if (excessCash > 500) {
