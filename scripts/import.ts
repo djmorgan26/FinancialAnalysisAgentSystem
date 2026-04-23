@@ -142,10 +142,9 @@ async function main() {
     await loadEnv();
     const userId = process.env.TARGET_USER_ID;
     if (!userId) {
-      console.warn(
-        "  ⚠ Supabase sync skipped: set TARGET_USER_ID (your auth user_id) to push."
+      throw new Error(
+        "TARGET_USER_ID is required. Set it to your auth user_id (from Supabase) and re-run."
       );
-      return;
     }
     const supabase = getSupabase();
     const pushedPlatforms: Platform[] = platforms.filter(
@@ -153,7 +152,7 @@ async function main() {
     );
     const hlds = data.holdings.filter((h) => pushedPlatforms.includes(h.platform));
     // Only push accounts that are referenced by at least one holding. Skips
-    // ghost accounts that may linger in the normalized JSON from profile bootstrap.
+    // ghost accounts that may linger in the normalized JSON from prior runs.
     const referencedAcctIds = new Set(hlds.map((h) => h.accountId));
     const accts = data.accounts.filter(
       (a) => pushedPlatforms.includes(a.platform) && referencedAcctIds.has(a.id)

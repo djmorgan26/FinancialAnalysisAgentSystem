@@ -202,7 +202,7 @@ async function main(): Promise<void> {
   if (prefErr) throw prefErr;
   if (!prefRow) {
     throw new Error(
-      "No investment_preferences row. Seed the singleton (id=1) first."
+      `No investment_preferences row for user ${userId}. Edit preferences in /settings to seed it.`
     );
   }
   const prefs: InvestmentPreferences = {
@@ -230,17 +230,34 @@ async function main(): Promise<void> {
   };
 
   // ---------------- Load profile + accounts + holdings ----------------
-  const profileRaw = await fs.readFile(
-    path.join(process.cwd(), "config", "user-profile.json"),
-    "utf-8"
-  );
-  const profile = JSON.parse(profileRaw) as UserProfile;
-
-  const [{ data: accountRows, error: aErr }, { data: holdingRows, error: hErr }] =
-    await Promise.all([
-      supabase.from("accounts").select("*").eq("user_id", userId),
-      supabase.from("holdings").select("*").eq("user_id", userId),
-    ]);
+  const [
+    { data: profileRow, error: pErr },
+    { data: accountRows, error: aErr },
+    { data: holdingRows, error: hErr },
+  ] = await Promise.all([
+    supabase.from("user_profiles").select("*").eq("user_id", userId).maybeSingle(),
+    supabase.from("accounts").select("*").eq("user_id", userId),
+    supabase.from("holdings").select("*").eq("user_id", userId),
+  ]);
+  if (pErr) throw pErr;
+  if (!profileRow) {
+    throw new Error(
+      `No user_profiles row for user ${userId}. Complete onboarding in the app first.`
+    );
+  }
+  const profile: UserProfile = {
+    name: profileRow.name ?? "",
+    age: profileRow.age ?? 0,
+    annualIncome: profileRow.annual_income ? num(profileRow.annual_income) : 0,
+    occupation: profileRow.occupation ?? "",
+    fixedExpenses: (profileRow.fixed_expenses as UserProfile["fixedExpenses"]) ?? [],
+    investmentPreferences: {
+      sectorBias: profileRow.sector_bias ?? [],
+      riskTolerance: profileRow.risk_tolerance ?? "moderate",
+      timeHorizon: profileRow.time_horizon ?? "long",
+    },
+    accounts: [],
+  };
   if (aErr) throw aErr;
   if (hErr) throw hErr;
 

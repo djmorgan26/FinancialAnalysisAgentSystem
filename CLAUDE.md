@@ -8,12 +8,12 @@ Next.js 16 · TypeScript · Tailwind · Supabase (Postgres + RLS) · Recharts ·
 ## Commands
 ```bash
 npm run dev              # Dashboard at localhost:3000
-npm run import           # CSV → normalized JSON → Supabase (non-Schwab)
-npm run analyze          # Run analysis pipeline
-npm run update           # import → analyze
-npm run invest:brief     # Build the /invest data bundle (human: -- --human)
+npm run import           # CSV → normalized JSON → Supabase (non-Schwab). Requires TARGET_USER_ID.
+npm run invest:brief     # Build the /invest data bundle (human: -- --human). Requires TARGET_USER_ID.
 npm run test:coinbase    # Smoke test CDP Ed25519 client
 ```
+
+Analysis runs in-process from the dashboard/API (`src/lib/analysis`); there is no separate analyze CLI. Snapshots are written to Supabase on demand.
 
 ## Slash commands
 `.claude/commands/invest.md` — `/invest [optional context]` produces an actionable brief by running `npm run invest:brief` and analyzing the JSON.
@@ -71,7 +71,7 @@ Everything is **per-user** now (keyed by `auth.users.id`). See `src/lib/supabase
 - **Fractional crypto / cash**: never apply a Finnhub stock quote to `asset_class in ('cash','crypto')` — symbols like `CASH`, `BTC`, `ETH` match real tickers and produce garbage valuations. `scripts/invest-brief.ts` filters by asset class before quote lookup.
 - **Schwab account classification**: `securitiesAccount.type` is CASH/MARGIN (margin permission), NOT brokerage-vs-IRA. Use `SCHWAB_ACCOUNT_NICKNAMES` env for display names.
 - **CSV import pushes non-Schwab to Supabase**. Schwab stays API-driven — do NOT push Schwab CSV data to Supabase; it would clobber live API data. `scripts/import.ts` filters this.
-- **Ghost accounts**: user-profile.json accounts list seeds `robinhood-individual`, `fidelity-401k`, `fidelity-brokerage` IDs that have no holdings. `import.ts` filters these out of the Supabase push.
+- **Ghost accounts**: the normalized JSON may carry account rows with no holdings from prior runs. `import.ts` filters to accounts that have at least one holding before pushing to Supabase.
 
 ## Environment variables
 

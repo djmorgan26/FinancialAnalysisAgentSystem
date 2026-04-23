@@ -11,7 +11,7 @@
  *   4. Copy App Key + Secret into .env.local
  */
 
-import { getSupabase } from "./supabase";
+import { getSupabaseAdmin as getSupabase } from "./supabase/admin";
 
 // ---------------------------------------------------------------------------
 // Config

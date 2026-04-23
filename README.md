@@ -30,10 +30,8 @@ First run creates your account via the sign-up page and walks you through onboar
 | Command | Purpose |
 |---|---|
 | `npm run dev` | Dashboard on `localhost:3000` |
-| `npm run import` | CSV (non-Schwab) → Supabase |
-| `npm run analyze` | Run analysis pipeline |
-| `npm run update` | import + analyze |
-| `npm run invest:brief` | Build the `/invest` data bundle |
+| `npm run import` | CSV (non-Schwab) → Supabase. Requires `TARGET_USER_ID`. |
+| `npm run invest:brief` | Build the `/invest` data bundle. Requires `TARGET_USER_ID`. |
 | `npm run test:coinbase` | Smoke test CDP Ed25519 client |
 
 ## Connecting platforms

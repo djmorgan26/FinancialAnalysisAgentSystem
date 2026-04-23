@@ -8,9 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "import": "tsx scripts/import.ts",
-    "analyze": "tsx scripts/analyze.ts",
-    "update": "tsx scripts/update.ts",
-    "invest:brief": "tsx scripts/invest-brief.ts"
+    "invest:brief": "tsx scripts/invest-brief.ts",
+    "test:coinbase": "tsx scripts/test-coinbase.ts"
   },
   "dependencies": {
     "@google/genai": "^1.50.1",

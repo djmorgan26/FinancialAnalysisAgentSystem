@@ -198,13 +198,9 @@ Both AI layers read the same Supabase tables and honor the same `investment_pref
 ├── .claude/
 │   └── commands/
 │       └── invest.md              # Claude Code slash command
-├── config/
-│   ├── user-profile.json          # demographic config (committed)
-│   └── user-profile.template.json
 ├── data/                          # gitignored except .gitkeep
 │   ├── raw/{platform}/            # dropped CSVs
-│   ├── normalized/                # intermediate JSON
-│   └── snapshots/                 # legacy snapshots
+│   └── normalized/                # intermediate JSON cache for import merges
 ├── docs/
 │   ├── PRD.md                     # product requirements
 │   ├── ARCHITECTURE.md            # this doc
@@ -214,9 +210,9 @@ Both AI layers read the same Supabase tables and honor the same `investment_pref
 ├── scripts/
 │   ├── import.ts                  # CSV → normalized → Supabase (non-Schwab)
 │   ├── invest-brief.ts            # Claude Code /invest data gatherer
-│   ├── analyze.ts                 # analysis pipeline CLI
-│   ├── update.ts                  # full pipeline runner
-│   └── test-coinbase.ts           # smoke tests
+│   ├── test-coinbase.ts           # CDP smoke test
+│   ├── ensure-test-user.ts        # bootstrap the dedicated verify user
+│   └── verify-{dashboard,assistant}.ts  # auth-gated HTTP smoke tests
 ├── src/
 │   ├── app/
 │   │   ├── (dashboard)/           # route group — main UI
@@ -346,7 +342,6 @@ CSV flow is identical except the fetch step reads the uploaded CSV rather than c
 ## Known technical debt
 
 - [ ] Ad-hoc API routes (`/api/schwab`, `/api/coinbase`) predate the unified `DataSource` abstraction — migrate to `/api/sources/{id}/*`
-- [ ] `loadUserProfile()` still reads from `config/user-profile.json` — intentional but inconsistent with other data in Supabase. Revisit in Phase 2.
 - [ ] Robinhood importer derives balance from position CSV only; no transaction support (Robinhood CSV exports split positions and transactions; we handle positions).
 - [ ] Sector inference has known gaps (QQQM, QTUM, CRWV, PLTR, many single tickers fall to "other"). Worth replacing with a data source (Finnhub company-profile endpoint) in Phase 2.
 - [ ] Fidelity 401(k) proprietary fund symbols (e.g., NON40O3YU) have no Finnhub quote — brief falls back to stored CSV price, which is fine but stale-by-definition.
