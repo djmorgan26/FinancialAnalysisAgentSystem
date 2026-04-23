@@ -9,64 +9,14 @@ import type {
 // ============================================================
 // Investment Analysis Module
 // ============================================================
+//
+// Sector / asset-class resolution is driven entirely by the classification
+// service (src/lib/classification). By the time holdings arrive here, they
+// have already been enriched via `applyClassifications`. This module simply
+// trusts `holding.sector` and `holding.assetClass`.
 
-/**
- * Known ETF/fund-to-sector mappings.
- * Extends beyond what the platform reports, catching common thematic ETFs.
- */
-const SYMBOL_SECTOR_MAP: Record<string, Sector> = {
-  VGT: "technology",
-  QQQ: "technology",
-  XLK: "technology",
-  ARKK: "technology",
-  ARKW: "technology",
-  SOXX: "semiconductors",
-  SMH: "semiconductors",
-  PSI: "semiconductors",
-  IBB: "biotech",
-  XBI: "biotech",
-  ARKG: "biotech",
-  XLV: "healthcare",
-  VHT: "healthcare",
-  QTUM: "quantum_computing",
-  IONQ: "quantum_computing",
-  BOTZ: "ai_ml",
-  ROBO: "ai_ml",
-  AIQ: "ai_ml",
-  VTI: "broad_market",
-  VOO: "broad_market",
-  SPY: "broad_market",
-  IVV: "broad_market",
-  VXUS: "broad_market",
-  IXUS: "broad_market",
-  VEA: "broad_market",
-  VWO: "broad_market",
-  BND: "broad_market",
-  AGG: "broad_market",
-  VBTLX: "broad_market",
-  BTC: "crypto",
-  ETH: "crypto",
-  SOL: "crypto",
-  GBTC: "crypto",
-  IBIT: "crypto",
-  XLF: "financials",
-  XLE: "energy",
-  XLI: "industrials",
-  XLY: "consumer_discretionary",
-  XLP: "consumer_staples",
-  XLU: "utilities",
-  XLRE: "real_estate",
-  VNQ: "real_estate",
-  XLC: "communication_services",
-};
-
-/**
- * Enrich a holding's sector using our known symbol map.
- * Returns the mapped sector if the symbol is recognized, otherwise uses the holding's own sector.
- */
 function resolveSector(holding: Holding): Sector {
-  const upperSymbol = holding.symbol.toUpperCase();
-  return SYMBOL_SECTOR_MAP[upperSymbol] ?? holding.sector;
+  return holding.sector;
 }
 
 /**

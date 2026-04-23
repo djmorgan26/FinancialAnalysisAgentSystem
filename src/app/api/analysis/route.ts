@@ -7,6 +7,7 @@ import {
   createSnapshot,
 } from "@/lib/data-store";
 import { runAnalysis } from "@/lib/analysis";
+import { resolveClassifications } from "@/lib/classification";
 import { requireUser } from "@/lib/supabase/server";
 
 /** GET /api/analysis — latest persisted analysis for the signed-in user. */
@@ -39,7 +40,12 @@ export async function POST() {
       loadUserProfile(user.id),
     ]);
 
-    const analysis = runAnalysis(data, profile);
+    const classificationMap = await resolveClassifications(
+      data.holdings.map((h) => h.symbol),
+      user.id
+    );
+
+    const analysis = runAnalysis(data, profile, classificationMap);
 
     await Promise.all([
       saveAnalysis(user.id, analysis),

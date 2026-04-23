@@ -23,6 +23,10 @@ import {
 } from "./investments";
 import { generateInsights } from "./insights";
 import { generateStrategy } from "./strategy";
+import {
+  applyClassifications,
+  type ClassificationMap,
+} from "@/lib/classification";
 
 // ============================================================
 // Main Analysis Orchestrator
@@ -42,7 +46,8 @@ import { generateStrategy } from "./strategy";
  */
 export function runAnalysis(
   data: FinancialData,
-  profile: UserProfile
+  profile: UserProfile,
+  classificationMap?: ClassificationMap
 ): AnalysisResult {
   // --- Step 1: Resolve accounts ---
   const accounts = resolveAccounts(data.accounts, profile);
@@ -69,7 +74,9 @@ export function runAnalysis(
       : 0;
 
   // --- Step 6: Investment analysis ---
-  const holdings = data.holdings;
+  const holdings = classificationMap
+    ? applyClassifications(data.holdings, classificationMap)
+    : data.holdings;
   const assetAllocation = computeAssetAllocation(holdings);
   const sectorExposure = computeSectorExposure(holdings);
   const accountBreakdown = computeAccountBreakdown(accounts);

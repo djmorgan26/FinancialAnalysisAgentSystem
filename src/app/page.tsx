@@ -4,6 +4,7 @@ import { ArrowRight, Cable, Sparkles } from "lucide-react";
 import { ShellWrapper } from "@/components/app/ShellWrapper";
 import { PageContainer, PageHeader } from "@/components/app/Page";
 import { Card, StatusBadge } from "@/components/app/Pill";
+import { CashSpending } from "@/components/app/CashSpending";
 import { requireUser } from "@/lib/supabase/server";
 import {
   createSnapshot,
@@ -14,6 +15,7 @@ import {
   saveAnalysis,
 } from "@/lib/data-store";
 import { runAnalysis } from "@/lib/analysis";
+import { resolveClassifications } from "@/lib/classification";
 
 export const dynamic = "force-dynamic";
 
@@ -21,9 +23,10 @@ export default async function DashboardPage() {
   const { user } = await requireUser();
   if (!(await getOnboardingComplete(user.id))) redirect("/onboarding");
 
-  const [cachedAnalysis, data] = await Promise.all([
+  const [cachedAnalysis, data, profile] = await Promise.all([
     loadAnalysis(user.id),
     loadFinancialData(user.id),
+    loadUserProfile(user.id),
   ]);
 
   // If the cached analysis is older than the newest account update, or if
@@ -40,17 +43,23 @@ export default async function DashboardPage() {
       (analysis?.generatedAt ?? "") < latestAccountUpdate);
   if (cacheStale) {
     try {
-      const profile = await loadUserProfile(user.id);
-      const fresh = runAnalysis(data, profile);
-      await saveAnalysis(user.id, fresh);
-      // Snapshot is opportunistic — failure shouldn't block the dashboard.
+      const classificationMap = await resolveClassifications(
+        data.holdings.map((h) => h.symbol),
+        user.id
+      );
+      const fresh = runAnalysis(data, profile, classificationMap);
+      // Render the fresh result immediately — don't let cache or snapshot
+      // persistence failures block the UI from seeing it.
+      analysis = fresh;
+      saveAnalysis(user.id, fresh).catch((err) =>
+        console.error("[dashboard] saveAnalysis failed:", err)
+      );
       createSnapshot(user.id, fresh).catch((err) =>
         console.error("[dashboard] createSnapshot failed:", err)
       );
-      analysis = fresh;
     } catch (err) {
-      // Recompute failed — fall back to the cached (or null) analysis so
-      // the dashboard still renders with live account sums.
+      // runAnalysis itself threw — fall back to cached (or null) so the
+      // dashboard still renders with live account sums.
       console.error("[dashboard] analysis recompute failed:", err);
     }
   }
@@ -61,7 +70,7 @@ export default async function DashboardPage() {
         {!hasData ? (
           <ZeroState />
         ) : (
-          <DashboardContent analysis={analysis} data={data} />
+          <DashboardContent analysis={analysis} data={data} profile={profile} />
         )}
       </PageContainer>
     </ShellWrapper>
@@ -71,9 +80,11 @@ export default async function DashboardPage() {
 function DashboardContent({
   analysis,
   data,
+  profile,
 }: {
   analysis: Awaited<ReturnType<typeof loadAnalysis>>;
   data: Awaited<ReturnType<typeof loadFinancialData>>;
+  profile: Awaited<ReturnType<typeof loadUserProfile>>;
 }) {
   // Always prefer the live account sum over any cached analysis value —
   // the cache can only lag, never lead.
@@ -286,6 +297,11 @@ function DashboardContent({
             </ul>
           )}
         </Card>
+      </div>
+
+      {/* Cash & spending */}
+      <div className="mb-6">
+        <CashSpending analysis={analysis} profile={profile} />
       </div>
 
       {/* Top positions */}

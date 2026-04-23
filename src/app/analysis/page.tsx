@@ -3,12 +3,17 @@ import { ShellWrapper } from "@/components/app/ShellWrapper";
 import { PageContainer, PageHeader } from "@/components/app/Page";
 import { Card } from "@/components/app/Pill";
 import { PositionsExplorer } from "@/components/app/PositionsExplorer";
+import {
+  ClassificationReview,
+  type UnclassifiedRow,
+} from "@/components/app/ClassificationReview";
 import { requireUser } from "@/lib/supabase/server";
 import {
-  loadAnalysis,
   loadFinancialData,
   getOnboardingComplete,
 } from "@/lib/data-store";
+import { applyClassifications, resolveClassifications } from "@/lib/classification";
+import { computeAssetAllocation, computeSectorExposure } from "@/lib/analysis";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +21,7 @@ export default async function AnalysisPage() {
   const { user } = await requireUser();
   if (!(await getOnboardingComplete(user.id))) redirect("/onboarding");
 
-  const [analysis, data] = await Promise.all([
-    loadAnalysis(user.id),
-    loadFinancialData(user.id),
-  ]);
+  const data = await loadFinancialData(user.id);
 
   const allHoldings = [...data.holdings].sort(
     (a, b) => b.currentValue - a.currentValue
@@ -28,6 +30,49 @@ export default async function AnalysisPage() {
   const costBasis = allHoldings.reduce((s, h) => s + h.costBasis, 0);
   const gainLoss = totalValue - costBasis;
   const gainLossPct = costBasis > 0 ? (gainLoss / costBasis) * 100 : 0;
+
+  // Find holdings that don't have a confident sector: either no cached
+  // classification, or the effective sector is "other" / crypto-only cash
+  // buckets that importers couldn't categorize.
+  const classificationMap = await resolveClassifications(
+    data.holdings.map((h) => h.symbol),
+    user.id
+  );
+
+  // Compute sector exposure and allocation live, so the UI reflects the
+  // current classification state even if the cached analysis row is stale.
+  const classifiedHoldings = applyClassifications(data.holdings, classificationMap);
+  const liveSectorExposure = computeSectorExposure(classifiedHoldings);
+  const liveAssetAllocation = computeAssetAllocation(classifiedHoldings);
+  const unclassified: UnclassifiedRow[] = (() => {
+    const bySymbol = new Map<
+      string,
+      { symbol: string; name: string; currentValue: number; currentSector: typeof data.holdings[number]["sector"] }
+    >();
+    for (const h of data.holdings) {
+      const upper = h.symbol.toUpperCase();
+      const c = classificationMap.get(upper);
+      const effectiveSector = c && c.source !== "fallback" ? c.sector : h.sector;
+      // Only flag positions we actually hold (skip cash/money-market which
+      // are already correctly bucketed as "cash" asset class).
+      if (effectiveSector !== "other") continue;
+      if (h.assetClass === "cash") continue;
+      const prev = bySymbol.get(upper);
+      if (prev) {
+        prev.currentValue += h.currentValue;
+      } else {
+        bySymbol.set(upper, {
+          symbol: upper,
+          name: h.name,
+          currentValue: h.currentValue,
+          currentSector: h.sector,
+        });
+      }
+    }
+    return [...bySymbol.values()]
+      .filter((r) => r.currentValue > 0)
+      .sort((a, b) => b.currentValue - a.currentValue);
+  })();
 
   return (
     <ShellWrapper>
@@ -86,25 +131,27 @@ export default async function AnalysisPage() {
           </Card>
         </div>
 
+        <ClassificationReview unclassified={unclassified} />
+
         {/* Allocation + sector */}
         <div className="grid md:grid-cols-2 gap-4 mb-6">
           <Card>
             <h3 className="text-[14px] font-semibold mb-4">Asset allocation</h3>
-            {analysis?.assetAllocation?.length ? (
-              <AllocationRows rows={analysis.assetAllocation} />
+            {liveAssetAllocation.length ? (
+              <AllocationRows rows={liveAssetAllocation} />
             ) : (
               <div className="text-[12px] text-[color:var(--text-muted)]">
-                Run analysis to compute allocations.
+                No holdings to analyze.
               </div>
             )}
           </Card>
           <Card>
             <h3 className="text-[14px] font-semibold mb-4">Sector exposure</h3>
-            {analysis?.sectorExposure?.length ? (
-              <AllocationRows rows={analysis.sectorExposure} />
+            {liveSectorExposure.length ? (
+              <AllocationRows rows={liveSectorExposure} />
             ) : (
               <div className="text-[12px] text-[color:var(--text-muted)]">
-                Run analysis to compute sector exposure.
+                No holdings to analyze.
               </div>
             )}
           </Card>

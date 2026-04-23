@@ -149,7 +149,7 @@ function inferSector(symbol: string, description: string): Sector {
   if (d.includes("energy")) return "energy";
   if (d.includes("biotech")) return "biotech";
   if (d.includes("real estate") || d.includes("reit")) return "real_estate";
-  if (d.includes("ai") || d.includes("artificial intelligence")) return "ai_ml";
+  if (/\bai\b/.test(d) || d.includes("artificial intelligence") || d.includes("machine learning")) return "ai_ml";
 
   const techStocks = ["AAPL", "MSFT", "GOOGL", "GOOG", "META", "AMZN", "NVDA", "TSLA", "NFLX", "CRM", "ORCL", "ADBE", "INTC", "AMD", "PLTR", "SNOW", "NET", "CRWD"];
   if (techStocks.includes(s)) return "technology";
