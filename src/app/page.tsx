@@ -81,7 +81,43 @@ function DashboardContent({
   const liabilities = analysis?.totalLiabilities ?? 0;
   const netWorth = liveAssets - liabilities;
 
-  const topPositions = [...data.holdings]
+  const aggregated = new Map<
+    string,
+    {
+      symbol: string;
+      name: string;
+      quantity: number;
+      currentValue: number;
+      costBasis: number;
+      gainLossPercent: number;
+      accountIds: Set<string>;
+    }
+  >();
+  for (const h of data.holdings) {
+    const key = h.symbol || h.name || h.id;
+    const prev = aggregated.get(key);
+    if (prev) {
+      prev.quantity += h.quantity;
+      prev.currentValue += h.currentValue;
+      prev.costBasis += h.costBasis;
+      prev.accountIds.add(h.accountId);
+    } else {
+      aggregated.set(key, {
+        symbol: h.symbol,
+        name: h.name,
+        quantity: h.quantity,
+        currentValue: h.currentValue,
+        costBasis: h.costBasis,
+        gainLossPercent: 0,
+        accountIds: new Set([h.accountId]),
+      });
+    }
+  }
+  for (const a of aggregated.values()) {
+    a.gainLossPercent =
+      a.costBasis > 0 ? ((a.currentValue - a.costBasis) / a.costBasis) * 100 : 0;
+  }
+  const topPositions = [...aggregated.values()]
     .sort((a, b) => b.currentValue - a.currentValue)
     .slice(0, 10);
 
@@ -274,7 +310,7 @@ function DashboardContent({
         >
           <div>Symbol</div>
           <div>Name</div>
-          <div>Account</div>
+          <div>Held in</div>
           <div className="text-right">Value</div>
           <div className="text-right">Qty</div>
           <div className="text-right">G/L %</div>
@@ -285,10 +321,13 @@ function DashboardContent({
           </div>
         ) : (
           topPositions.map((h) => {
-            const acct = data.accounts.find((a) => a.id === h.accountId);
+            const heldIn =
+              h.accountIds.size === 1
+                ? (data.accounts.find((a) => a.id === [...h.accountIds][0])?.name ?? "—")
+                : `${h.accountIds.size} accounts`;
             return (
               <div
-                key={h.id}
+                key={h.symbol || h.name}
                 className="grid px-5 py-2.5 text-[12.5px] items-center"
                 style={{
                   gridTemplateColumns: "80px 1.3fr 1fr 100px 90px 90px",
@@ -306,7 +345,7 @@ function DashboardContent({
                   className="text-[11px]"
                   style={{ color: "var(--text-muted)" }}
                 >
-                  {acct?.name ?? "—"}
+                  {heldIn}
                 </div>
                 <div className="mono text-right font-medium">
                   ${Math.round(h.currentValue).toLocaleString()}
@@ -315,7 +354,7 @@ function DashboardContent({
                   className="mono text-right"
                   style={{ color: "var(--text-muted)" }}
                 >
-                  {h.quantity.toFixed(2)}
+                  {h.quantity.toFixed(h.quantity < 1 ? 4 : 2)}
                 </div>
                 <div
                   className="mono text-right"

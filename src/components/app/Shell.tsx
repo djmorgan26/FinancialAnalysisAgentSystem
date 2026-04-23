@@ -11,9 +11,9 @@ import {
   Sparkles,
   Settings,
   LogOut,
-  Search,
 } from "lucide-react";
 import { FloatingAssistant } from "./FloatingAssistant";
+import { QuickSearch, type QuickSearchItem } from "./QuickSearch";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, match: (p: string) => p === "/" },
@@ -29,11 +29,13 @@ export function AppShell({
   user,
   syncSummary,
   netWorthPill,
+  searchItems = [],
 }: {
   children: React.ReactNode;
   user: { email: string | null; initial: string };
   syncSummary?: { label: string; tone: "gain" | "warn" | "loss" } | null;
   netWorthPill?: { value: string; delta?: string; tone?: "gain" | "loss" | "neutral" } | null;
+  searchItems?: QuickSearchItem[];
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -111,22 +113,7 @@ export function AppShell({
           </span>
         )}
 
-        <button
-          className="hidden md:inline-flex items-center gap-2 input"
-          style={{
-            width: 220,
-            padding: "6px 10px",
-            color: "var(--text-muted)",
-            background: "var(--bg-inset)",
-          }}
-          disabled
-          title="Coming soon"
-        >
-          <Search size={13} />
-          <span className="text-[12px]">Quick search</span>
-          <span className="flex-1" />
-          <span className="kbd">⌘K</span>
-        </button>
+        <QuickSearch items={searchItems} />
 
         <div className="flex items-center gap-2">
           <button

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { ShellWrapper } from "@/components/app/ShellWrapper";
 import { PageContainer, PageHeader } from "@/components/app/Page";
 import { Card } from "@/components/app/Pill";
+import { PositionsExplorer } from "@/components/app/PositionsExplorer";
 import { requireUser } from "@/lib/supabase/server";
 import {
   loadAnalysis,
@@ -109,93 +110,7 @@ export default async function AnalysisPage() {
           </Card>
         </div>
 
-        {/* Holdings table */}
-        <Card padded={false}>
-          <div className="flex items-center justify-between px-5 pt-4 pb-3">
-            <h3 className="text-[14px] font-semibold">
-              Holdings · {allHoldings.length} positions
-            </h3>
-          </div>
-          <div
-            className="grid text-[10px] uppercase tracking-wider px-5 py-2"
-            style={{
-              gridTemplateColumns:
-                "70px 1.4fr 1.1fr 70px 80px 90px 100px 80px",
-              color: "var(--text-muted)",
-              borderTop: "1px dashed var(--border)",
-              borderBottom: "1px solid var(--border)",
-            }}
-          >
-            <div>Symbol</div>
-            <div>Name</div>
-            <div>Account</div>
-            <div className="text-right">Qty</div>
-            <div className="text-right">Avg</div>
-            <div className="text-right">Price</div>
-            <div className="text-right">Value</div>
-            <div className="text-right">G/L %</div>
-          </div>
-          {allHoldings.slice(0, 80).map((h) => {
-            const acct = data.accounts.find((a) => a.id === h.accountId);
-            return (
-              <div
-                key={h.id}
-                className="grid px-5 py-2 text-[12.5px] items-center"
-                style={{
-                  gridTemplateColumns:
-                    "70px 1.4fr 1.1fr 70px 80px 90px 100px 80px",
-                  borderBottom: "1px dotted var(--border)",
-                }}
-              >
-                <div className="mono font-semibold">{h.symbol}</div>
-                <div
-                  className="truncate"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  {h.name}
-                </div>
-                <div
-                  className="text-[11px]"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  {acct?.name ?? "—"}
-                </div>
-                <div className="mono text-right">{h.quantity.toFixed(2)}</div>
-                <div
-                  className="mono text-right"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  ${(h.quantity > 0 ? h.costBasis / h.quantity : 0).toFixed(2)}
-                </div>
-                <div className="mono text-right">
-                  ${h.currentPrice.toFixed(2)}
-                </div>
-                <div className="mono text-right font-medium">
-                  ${Math.round(h.currentValue).toLocaleString()}
-                </div>
-                <div
-                  className="mono text-right"
-                  style={{
-                    color:
-                      h.gainLossPercent > 0
-                        ? "var(--gain)"
-                        : h.gainLossPercent < 0
-                          ? "var(--loss)"
-                          : "var(--text-muted)",
-                  }}
-                >
-                  {h.gainLossPercent > 0 ? "+" : ""}
-                  {h.gainLossPercent.toFixed(1)}%
-                </div>
-              </div>
-            );
-          })}
-          {allHoldings.length === 0 && (
-            <div className="px-5 py-10 text-center text-[12px] text-[color:var(--text-muted)]">
-              No holdings yet. Connect an account to get started.
-            </div>
-          )}
-        </Card>
+        <PositionsExplorer holdings={data.holdings} accounts={data.accounts} />
       </PageContainer>
     </ShellWrapper>
   );
