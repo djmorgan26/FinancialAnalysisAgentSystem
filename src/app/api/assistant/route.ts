@@ -173,6 +173,35 @@ function summarize(name: string, result: unknown): string {
     }
     if (name === "updatePreferences" || name === "updateProfile")
       return "updated";
+    if (name === "addExpense") {
+      const r = result as {
+        added?: { name: string; amount: number; frequency: string };
+        error?: string;
+      };
+      if (r.error) return `rejected: ${r.error}`;
+      if (r.added)
+        return `added $${r.added.amount}/${r.added.frequency} "${r.added.name}"`;
+      return "added";
+    }
+    if (name === "removeExpense") {
+      const r = result as { removed?: boolean; name?: string; message?: string };
+      if (r.removed === false) return r.message ?? "no match";
+      return `removed "${r.name}"`;
+    }
+    if (name === "setBudget") {
+      const r = result as {
+        reset?: boolean;
+        overrides?: Record<string, number>;
+        error?: string;
+      };
+      if (r.error) return `rejected: ${r.error}`;
+      if (r.reset) return "budget overrides cleared";
+      if (r.overrides)
+        return `budget override: ${Object.entries(r.overrides)
+          .map(([k, v]) => `${k} $${v.toLocaleString()}`)
+          .join(", ")}`;
+      return "updated";
+    }
     return "ok";
   } catch {
     return "ok";

@@ -121,12 +121,20 @@ export interface FixedExpense {
   frequency: "monthly" | "annual" | "quarterly";
 }
 
+export interface BudgetOverrides {
+  necessities?: number;
+  investments?: number;
+  discretionary?: number;
+  savings?: number;
+}
+
 export interface UserProfile {
   name: string;
   age: number;
   annualIncome: number;
   occupation: string;
   fixedExpenses: FixedExpense[];
+  budgetOverrides?: BudgetOverrides;
   investmentPreferences: {
     sectorBias: Sector[];
     riskTolerance: "conservative" | "moderate" | "aggressive";

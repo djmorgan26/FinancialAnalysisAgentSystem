@@ -282,6 +282,7 @@ interface UserProfileRow {
   annual_income: number | string | null;
   occupation: string | null;
   fixed_expenses: UserProfile["fixedExpenses"] | null;
+  budget_overrides: UserProfile["budgetOverrides"] | null;
   payroll_details: Record<string, unknown> | null;
   risk_tolerance: "conservative" | "moderate" | "aggressive" | null;
   time_horizon: "short" | "medium" | "long" | null;
@@ -290,12 +291,15 @@ interface UserProfileRow {
 }
 
 function profileFromRow(r: UserProfileRow): UserProfile {
+  const overrides = r.budget_overrides ?? undefined;
   return {
     name: r.name ?? "",
     age: r.age ?? 0,
     annualIncome: r.annual_income ? num(r.annual_income) : 0,
     occupation: r.occupation ?? "",
     fixedExpenses: (r.fixed_expenses as UserProfile["fixedExpenses"]) ?? [],
+    budgetOverrides:
+      overrides && Object.keys(overrides).length > 0 ? overrides : undefined,
     investmentPreferences: {
       sectorBias: r.sector_bias ?? [],
       riskTolerance: r.risk_tolerance ?? "moderate",
@@ -333,9 +337,11 @@ export async function loadUserProfile(userId: string): Promise<UserProfile> {
 
 export async function saveUserProfile(
   userId: string,
-  profile: Partial<UserProfile> & {
+  profile: Omit<Partial<UserProfile>, "budgetOverrides"> & {
     payrollDetails?: Record<string, unknown>;
     onboardingComplete?: boolean;
+    // null = clear all overrides, a partial object = replace stored overrides
+    budgetOverrides?: UserProfile["budgetOverrides"] | null;
   }
 ): Promise<void> {
   const supabase = getSupabaseAdmin();
@@ -348,6 +354,12 @@ export async function saveUserProfile(
   if (profile.annualIncome !== undefined) row.annual_income = profile.annualIncome;
   if (profile.occupation !== undefined) row.occupation = profile.occupation;
   if (profile.fixedExpenses !== undefined) row.fixed_expenses = profile.fixedExpenses;
+  if (profile.budgetOverrides !== undefined) {
+    row.budget_overrides =
+      profile.budgetOverrides === null
+        ? null
+        : (profile.budgetOverrides as UserProfile["budgetOverrides"]);
+  }
   if (profile.payrollDetails !== undefined) row.payroll_details = profile.payrollDetails;
   if (profile.investmentPreferences?.riskTolerance !== undefined)
     row.risk_tolerance = profile.investmentPreferences.riskTolerance;

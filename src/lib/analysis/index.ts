@@ -78,7 +78,7 @@ export function runAnalysis(
     ? applyClassifications(data.holdings, classificationMap)
     : data.holdings;
   const assetAllocation = computeAssetAllocation(holdings);
-  const sectorExposure = computeSectorExposure(holdings);
+  const sectorExposure = computeSectorExposure(holdings, classificationMap);
   const accountBreakdown = computeAccountBreakdown(accounts);
 
   // --- Step 7: Generate strategy ---

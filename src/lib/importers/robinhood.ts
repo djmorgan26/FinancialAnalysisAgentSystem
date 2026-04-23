@@ -151,10 +151,10 @@ function inferSector(symbol: string, description: string): Sector {
   if (d.includes("real estate") || d.includes("reit")) return "real_estate";
   if (/\bai\b/.test(d) || d.includes("artificial intelligence") || d.includes("machine learning")) return "ai_ml";
 
-  const techStocks = ["AAPL", "MSFT", "GOOGL", "GOOG", "META", "AMZN", "NVDA", "TSLA", "NFLX", "CRM", "ORCL", "ADBE", "INTC", "AMD", "PLTR", "SNOW", "NET", "CRWD"];
-  if (techStocks.includes(s)) return "technology";
   const semiStocks = ["NVDA", "AMD", "INTC", "TSM", "AVGO", "QCOM", "MU", "MRVL", "ASML"];
   if (semiStocks.includes(s)) return "semiconductors";
+  const techStocks = ["AAPL", "MSFT", "GOOGL", "GOOG", "META", "AMZN", "TSLA", "NFLX", "CRM", "ORCL", "ADBE", "PLTR", "SNOW", "NET", "CRWD"];
+  if (techStocks.includes(s)) return "technology";
   const healthStocks = ["JNJ", "UNH", "PFE", "ABBV", "MRK", "LLY"];
   if (healthStocks.includes(s)) return "healthcare";
   const finStocks = ["JPM", "BAC", "WFC", "GS", "MS", "V", "MA", "SQ", "PYPL", "COIN"];
@@ -181,10 +181,12 @@ export function importAccounts(csvContent: string): Account[] {
     0
   );
 
-  let balance = posEquitySum;
+  const balance = posEquitySum;
   if (balance === 0) {
-    const txRows = parseCSV<RobinhoodTransactionRow>(csvContent);
-    for (const row of txRows) balance += parseDollar(row["Amount"]);
+    console.warn(
+      "[robinhood.importAccounts] positions CSV has no Equity column or zero equity; " +
+        "returning balance=0. Export a positions CSV (not transactions-only) for accurate balances."
+    );
   }
 
   return [

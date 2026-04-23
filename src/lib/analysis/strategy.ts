@@ -227,11 +227,33 @@ function buildMonthlyBudget(
     discretionary -= Math.round(pullFromDiscretionary);
   }
 
-  return {
+  const computed = {
     necessities: Math.round(necessities),
     investments: Math.round(investments),
     discretionary: Math.round(discretionary),
     savings: Math.round(savings),
+  };
+
+  const overrides = profile.budgetOverrides;
+  if (!overrides) return computed;
+
+  return {
+    necessities:
+      typeof overrides.necessities === "number"
+        ? Math.round(overrides.necessities)
+        : computed.necessities,
+    investments:
+      typeof overrides.investments === "number"
+        ? Math.round(overrides.investments)
+        : computed.investments,
+    discretionary:
+      typeof overrides.discretionary === "number"
+        ? Math.round(overrides.discretionary)
+        : computed.discretionary,
+    savings:
+      typeof overrides.savings === "number"
+        ? Math.round(overrides.savings)
+        : computed.savings,
   };
 }
 

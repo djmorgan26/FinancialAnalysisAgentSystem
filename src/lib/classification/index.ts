@@ -52,15 +52,33 @@ export interface Classification {
   assetClass: AssetClass;
   source: "manual" | "ai" | "heuristic" | "fallback";
   name?: string;
+  customCategoryId?: string;
+  customCategoryName?: string;
 }
 
 export type ClassificationMap = Map<string, Classification>;
+
+export interface UserCustomCategory {
+  id: string;
+  name: string;
+}
 
 const FALLBACK: Classification = {
   sector: "other",
   assetClass: "other",
   source: "fallback",
 };
+
+interface OverrideRow {
+  symbol: string;
+  sector: string;
+  asset_class: string | null;
+  custom_category_id: string | null;
+  user_custom_categories:
+    | { id: string; name: string }
+    | { id: string; name: string }[]
+    | null;
+}
 
 /**
  * Load classifications for a set of symbols. Reads from both tables and
@@ -83,7 +101,9 @@ export async function resolveClassifications(
       .in("symbol", upper),
     supabase
       .from("user_symbol_overrides")
-      .select("symbol, sector, asset_class")
+      .select(
+        "symbol, sector, asset_class, custom_category_id, user_custom_categories(id, name)"
+      )
       .eq("user_id", userId)
       .in("symbol", upper),
   ]);
@@ -100,14 +120,19 @@ export async function resolveClassifications(
   }
 
   if (overrideRes.data) {
-    for (const row of overrideRes.data) {
+    for (const row of overrideRes.data as OverrideRow[]) {
       const existing = map.get(row.symbol);
+      const customCategory = Array.isArray(row.user_custom_categories)
+        ? row.user_custom_categories[0]
+        : row.user_custom_categories;
       map.set(row.symbol, {
         sector: row.sector as Sector,
         assetClass:
           (row.asset_class as AssetClass) ?? existing?.assetClass ?? "other",
         source: "manual",
         name: existing?.name,
+        customCategoryId: row.custom_category_id ?? undefined,
+        customCategoryName: customCategory?.name ?? undefined,
       });
     }
   }
@@ -150,10 +175,11 @@ interface AISuggestion {
 }
 
 /**
- * Classify a batch of symbols via Gemini. Writes results to symbol_classifications.
- * Returns the map of successfully classified symbols.
+ * Call Gemini for a batch of symbols and return their classifications. Does NOT
+ * persist results — use `persistClassifications` to write them to the global
+ * `symbol_classifications` cache.
  */
-export async function classifyWithAI(
+export async function suggestWithAI(
   symbols: string[],
   context?: Record<string, { name?: string; hintAssetClass?: AssetClass }>
 ): Promise<Map<string, Classification>> {
@@ -190,6 +216,7 @@ Guidelines:
 - "quantum_computing" for quantum-focused names (IONQ, QBTS, RGTI, QUBT, ARQQ, QTUM ETF).
 - "biotech" for biotech companies and ETFs (XBI, IBB, ARKG).
 - "crypto" for cryptocurrencies and crypto ETFs (BTC, ETH, SOL, IBIT, GBTC).
+- Ultrashort Treasury / floating-rate bond ETFs (SGOV, BIL, SHV, USFR, TFLO, ICSH, FLOT) → sector "other", asset_class "fixed_income". They trade like cash but pay dividends; users typically bucket these under a custom "Cash Equivalents" category.
 - Target-date funds and balanced/allocation funds → "broad_market", asset_class "us_equity".
 - Money-market / cash funds (SWVXX, SPAXX, VMFXX) → sector "other", asset_class "cash".
 - If genuinely unknown, use sector "other" and your best asset-class guess.
@@ -231,41 +258,27 @@ Return JSON only.`;
   let parsed: { classifications: AISuggestion[] };
   try {
     parsed = JSON.parse(text);
-  } catch (err) {
-    console.error("[classifyWithAI] failed to parse Gemini response:", text);
+  } catch {
+    console.error("[suggestWithAI] failed to parse Gemini response:", text);
     throw new Error("AI returned invalid JSON");
   }
 
-  const rows = (parsed.classifications ?? [])
-    .map((c) => ({
-      symbol: c.symbol.toUpperCase(),
-      sector: SECTORS.includes(c.sector as Sector) ? c.sector : "other",
-      asset_class: ASSET_CLASSES.includes(c.assetClass as AssetClass)
-        ? c.assetClass
-        : "other",
-      name: c.name ?? context?.[c.symbol.toUpperCase()]?.name ?? null,
-      source: "ai" as const,
-      updated_at: new Date().toISOString(),
-    }))
-    .filter((r) => upper.includes(r.symbol));
-
-  if (rows.length === 0) return result;
-
-  const supabase = getSupabaseAdmin();
-  const { error } = await supabase
-    .from("symbol_classifications")
-    .upsert(rows, { onConflict: "symbol" });
-  if (error) {
-    console.error("[classifyWithAI] cache write failed:", error);
-    throw error;
-  }
-
-  for (const r of rows) {
-    result.set(r.symbol, {
-      sector: r.sector as Sector,
-      assetClass: r.asset_class as AssetClass,
+  for (const c of parsed.classifications ?? []) {
+    const symbol = c.symbol.toUpperCase();
+    if (!upper.includes(symbol)) continue;
+    const sectorValid = SECTORS.includes(c.sector as Sector);
+    const assetClassValid = ASSET_CLASSES.includes(c.assetClass as AssetClass);
+    if (!sectorValid || !assetClassValid) {
+      console.warn("[suggestWithAI] rejected out-of-enum value for", c.symbol, {
+        sector: c.sector,
+        assetClass: c.assetClass,
+      });
+    }
+    result.set(symbol, {
+      sector: sectorValid ? (c.sector as Sector) : "other",
+      assetClass: assetClassValid ? (c.assetClass as AssetClass) : "other",
       source: "ai",
-      name: r.name ?? undefined,
+      name: c.name ?? context?.[symbol]?.name ?? undefined,
     });
   }
 
@@ -273,26 +286,112 @@ Return JSON only.`;
 }
 
 /**
- * Save a manual user override.
+ * Persist a classification map to the global `symbol_classifications` cache.
+ */
+export async function persistClassifications(
+  map: Map<string, Classification>
+): Promise<void> {
+  if (map.size === 0) return;
+  const rows = [...map.entries()].map(([symbol, c]) => ({
+    symbol,
+    sector: c.sector,
+    asset_class: c.assetClass,
+    name: c.name ?? null,
+    source: c.source === "manual" ? "manual" : c.source === "heuristic" ? "heuristic" : "ai",
+    updated_at: new Date().toISOString(),
+  }));
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("symbol_classifications")
+    .upsert(rows, { onConflict: "symbol" });
+  if (error) {
+    console.error("[persistClassifications] cache write failed:", error);
+    throw error;
+  }
+}
+
+/**
+ * Backward-compat: suggest + persist. Callers that want the old behavior.
+ */
+export async function classifyWithAI(
+  symbols: string[],
+  context?: Record<string, { name?: string; hintAssetClass?: AssetClass }>
+): Promise<Map<string, Classification>> {
+  const result = await suggestWithAI(symbols, context);
+  await persistClassifications(result);
+  return result;
+}
+
+/**
+ * Save a manual user override. Pass `customCategoryId: null` to explicitly
+ * clear a previously assigned custom category.
  */
 export async function saveUserOverride(
   userId: string,
   symbol: string,
   sector: Sector,
-  assetClass?: AssetClass
+  assetClass?: AssetClass,
+  customCategoryId?: string | null
 ): Promise<void> {
   const upper = symbol.toUpperCase();
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from("user_symbol_overrides").upsert(
-    {
-      user_id: userId,
-      symbol: upper,
-      sector,
-      asset_class: assetClass ?? null,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "user_id,symbol" }
-  );
+  const row: Record<string, unknown> = {
+    user_id: userId,
+    symbol: upper,
+    sector,
+    asset_class: assetClass ?? null,
+    updated_at: new Date().toISOString(),
+  };
+  if (customCategoryId !== undefined) {
+    row.custom_category_id = customCategoryId;
+  }
+  const { error } = await supabase
+    .from("user_symbol_overrides")
+    .upsert(row, { onConflict: "user_id,symbol" });
+  if (error) throw error;
+}
+
+/** List the user's custom categories. */
+export async function getUserCustomCategories(
+  userId: string
+): Promise<UserCustomCategory[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("user_custom_categories")
+    .select("id, name")
+    .eq("user_id", userId)
+    .order("name", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as UserCustomCategory[];
+}
+
+/** Create a custom category. Throws on unique-violation so the API can 409. */
+export async function createUserCustomCategory(
+  userId: string,
+  name: string
+): Promise<UserCustomCategory> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("user_custom_categories")
+    .insert({ user_id: userId, name })
+    .select("id, name")
+    .single();
+  if (error) throw error;
+  return data as UserCustomCategory;
+}
+
+/** Delete a custom category owned by this user. FK is ON DELETE SET NULL, so
+ *  any overrides referencing it are cleared automatically. */
+export async function deleteUserCustomCategory(
+  userId: string,
+  id: string
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("user_custom_categories")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
   if (error) throw error;
 }
 

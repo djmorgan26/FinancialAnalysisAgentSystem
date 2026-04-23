@@ -73,7 +73,7 @@ function inferFidelityAccountType(name: string): AccountType {
   if (n.includes("roth") && n.includes("ira")) return "roth_ira";
   if (n.includes("traditional") && n.includes("401")) return "traditional_401k";
   if (n.includes("traditional") && n.includes("ira")) return "traditional_ira";
-  if (n.includes("401")) return "roth_401k"; // Fidelity 401k default
+  if (n.includes("401")) return "traditional_401k"; // most employer 401(k)s are traditional; rename the account to include "roth" to override
   if (n.includes("brokeragelink")) return "brokerage";
   if (n.includes("brokerage")) return "brokerage";
   if (n.includes("individual")) return "brokerage";

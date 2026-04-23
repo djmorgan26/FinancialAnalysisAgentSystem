@@ -5,6 +5,32 @@ import type {
   Sector,
   AllocationBreakdown,
 } from "@/lib/types";
+import type { ClassificationMap } from "@/lib/classification";
+
+const SECTOR_LABELS: Record<Sector, string> = {
+  technology: "Technology",
+  healthcare: "Healthcare",
+  financials: "Financials",
+  consumer_discretionary: "Consumer Discretionary",
+  consumer_staples: "Consumer Staples",
+  industrials: "Industrials",
+  energy: "Energy",
+  utilities: "Utilities",
+  materials: "Materials",
+  real_estate: "Real Estate",
+  communication_services: "Communication Services",
+  semiconductors: "Semiconductors",
+  ai_ml: "AI / Machine Learning",
+  quantum_computing: "Quantum Computing",
+  biotech: "Biotech",
+  crypto: "Cryptocurrency",
+  broad_market: "Broad Market",
+  other: "Other",
+};
+
+export function sectorLabel(sector: Sector): string {
+  return SECTOR_LABELS[sector] ?? sector;
+}
 
 // ============================================================
 // Investment Analysis Module
@@ -109,46 +135,27 @@ export function computeAssetAllocation(
 }
 
 /**
- * Compute sector exposure breakdown.
- * Uses enriched sector data from the symbol map where available.
+ * Compute sector exposure breakdown. When a classificationMap is provided,
+ * holdings with a customCategoryName are grouped under that label instead of
+ * their built-in sector.
  */
 export function computeSectorExposure(
-  holdings: Holding[]
+  holdings: Holding[],
+  classificationMap?: ClassificationMap
 ): AllocationBreakdown[] {
   const totalValue = holdings.reduce((sum, h) => sum + h.currentValue, 0);
   if (totalValue === 0) return [];
 
-  const sectorMap = new Map<Sector, number>();
+  const byLabel = new Map<string, number>();
   for (const h of holdings) {
-    const sector = resolveSector(h);
-    const current = sectorMap.get(sector) ?? 0;
-    sectorMap.set(sector, current + h.currentValue);
+    const custom = classificationMap?.get(h.symbol.toUpperCase())?.customCategoryName;
+    const label = custom ?? SECTOR_LABELS[resolveSector(h)] ?? resolveSector(h);
+    byLabel.set(label, (byLabel.get(label) ?? 0) + h.currentValue);
   }
 
-  const labels: Record<Sector, string> = {
-    technology: "Technology",
-    healthcare: "Healthcare",
-    financials: "Financials",
-    consumer_discretionary: "Consumer Discretionary",
-    consumer_staples: "Consumer Staples",
-    industrials: "Industrials",
-    energy: "Energy",
-    utilities: "Utilities",
-    materials: "Materials",
-    real_estate: "Real Estate",
-    communication_services: "Communication Services",
-    semiconductors: "Semiconductors",
-    ai_ml: "AI / Machine Learning",
-    quantum_computing: "Quantum Computing",
-    biotech: "Biotech",
-    crypto: "Cryptocurrency",
-    broad_market: "Broad Market",
-    other: "Other",
-  };
-
-  return [...sectorMap.entries()]
-    .map(([sector, value]) => ({
-      label: labels[sector] ?? sector,
+  return [...byLabel.entries()]
+    .map(([label, value]) => ({
+      label,
       value: Math.round(value * 100) / 100,
       percent: Math.round((value / totalValue) * 10000) / 100,
     }))

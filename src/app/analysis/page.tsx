@@ -5,15 +5,20 @@ import { Card } from "@/components/app/Pill";
 import { PositionsExplorer } from "@/components/app/PositionsExplorer";
 import {
   ClassificationReview,
-  type UnclassifiedRow,
+  type CategorizeRow,
 } from "@/components/app/ClassificationReview";
 import { requireUser } from "@/lib/supabase/server";
 import {
   loadFinancialData,
   getOnboardingComplete,
 } from "@/lib/data-store";
-import { applyClassifications, resolveClassifications } from "@/lib/classification";
+import {
+  applyClassifications,
+  resolveClassifications,
+  getUserCustomCategories,
+} from "@/lib/classification";
 import { computeAssetAllocation, computeSectorExposure } from "@/lib/analysis";
+import type { Sector } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -42,21 +47,22 @@ export default async function AnalysisPage() {
   // Compute sector exposure and allocation live, so the UI reflects the
   // current classification state even if the cached analysis row is stale.
   const classifiedHoldings = applyClassifications(data.holdings, classificationMap);
-  const liveSectorExposure = computeSectorExposure(classifiedHoldings);
+  const liveSectorExposure = computeSectorExposure(classifiedHoldings, classificationMap);
   const liveAssetAllocation = computeAssetAllocation(classifiedHoldings);
-  const unclassified: UnclassifiedRow[] = (() => {
-    const bySymbol = new Map<
-      string,
-      { symbol: string; name: string; currentValue: number; currentSector: typeof data.holdings[number]["sector"] }
-    >();
+  const customCategories = await getUserCustomCategories(user.id);
+
+  const categorizeRows: CategorizeRow[] = (() => {
+    const bySymbol = new Map<string, CategorizeRow>();
     for (const h of data.holdings) {
+      if (h.assetClass === "cash") continue;
       const upper = h.symbol.toUpperCase();
       const c = classificationMap.get(upper);
-      const effectiveSector = c && c.source !== "fallback" ? c.sector : h.sector;
-      // Only flag positions we actually hold (skip cash/money-market which
-      // are already correctly bucketed as "cash" asset class).
-      if (effectiveSector !== "other") continue;
-      if (h.assetClass === "cash") continue;
+      const savedSector: Sector | null =
+        c && c.source === "manual" ? c.sector : null;
+      const savedCustomCategoryId: string | null =
+        c && c.source === "manual" ? c.customCategoryId ?? null : null;
+      const cacheSector: Sector | null =
+        c && (c.source === "ai" || c.source === "heuristic") ? c.sector : null;
       const prev = bySymbol.get(upper);
       if (prev) {
         prev.currentValue += h.currentValue;
@@ -65,13 +71,20 @@ export default async function AnalysisPage() {
           symbol: upper,
           name: h.name,
           currentValue: h.currentValue,
-          currentSector: h.sector,
+          savedSector,
+          savedCustomCategoryId,
+          cacheSector,
         });
       }
     }
     return [...bySymbol.values()]
       .filter((r) => r.currentValue > 0)
-      .sort((a, b) => b.currentValue - a.currentValue);
+      .sort((a, b) => {
+        const aCat = a.savedSector || a.savedCustomCategoryId ? 1 : 0;
+        const bCat = b.savedSector || b.savedCustomCategoryId ? 1 : 0;
+        if (aCat !== bCat) return aCat - bCat; // uncategorized first
+        return b.currentValue - a.currentValue;
+      });
   })();
 
   return (
@@ -131,7 +144,10 @@ export default async function AnalysisPage() {
           </Card>
         </div>
 
-        <ClassificationReview unclassified={unclassified} />
+        <ClassificationReview
+          rows={categorizeRows}
+          customCategories={customCategories}
+        />
 
         {/* Allocation + sector */}
         <div className="grid md:grid-cols-2 gap-4 mb-6">

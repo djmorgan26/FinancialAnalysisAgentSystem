@@ -37,7 +37,7 @@ export async function GET() {
       await finnhub.getQuote("AAPL");
       finnhubConnected = true;
     } catch {
-      finnhubConnected = true;
+      finnhubConnected = false;
     }
   }
 

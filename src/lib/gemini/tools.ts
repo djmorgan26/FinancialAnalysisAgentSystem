@@ -11,6 +11,7 @@ import {
   saveUserProfile,
   loadSyncLogs,
 } from "@/lib/data-store";
+import type { UserProfile } from "@/lib/types";
 
 export const toolDeclarations = [
   {
@@ -102,6 +103,57 @@ export const toolDeclarations = [
           enum: ["short", "medium", "long"],
         },
         sectorBias: { type: "array", items: { type: "string" } },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "addExpense",
+    description:
+      "Add a fixed recurring expense to the user's profile (e.g. rent, subscription, insurance). Confirm with the user before calling. Duplicates (same name, case-insensitive) are rejected.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Label shown in the UI." },
+        amount: {
+          type: "number",
+          description: "Dollar amount per period (positive number).",
+        },
+        frequency: {
+          type: "string",
+          enum: ["monthly", "quarterly", "annual"],
+        },
+      },
+      required: ["name", "amount", "frequency"],
+    },
+  },
+  {
+    name: "removeExpense",
+    description:
+      "Remove a fixed expense by name (case-insensitive match). Confirm with the user before calling.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "setBudget",
+    description:
+      "Set or clear per-bucket monthly budget overrides. Each bucket (necessities, investments, discretionary, savings) is an optional monthly dollar amount. Supply only the buckets you want to change. Pass reset=true to clear all overrides and return to the computed budget. Confirm with the user before calling.",
+    parameters: {
+      type: "object",
+      properties: {
+        necessities: { type: "number" },
+        investments: { type: "number" },
+        discretionary: { type: "number" },
+        savings: { type: "number" },
+        reset: {
+          type: "boolean",
+          description: "When true, clear all overrides.",
+        },
       },
       required: [],
     },
@@ -203,6 +255,66 @@ export async function runTool(
       });
       return await loadUserProfile(userId);
     }
+    case "addExpense": {
+      const rawName = (args.name as string | undefined)?.trim();
+      const amount = args.amount as number | undefined;
+      const frequency = args.frequency as
+        | "monthly"
+        | "quarterly"
+        | "annual"
+        | undefined;
+      if (!rawName || typeof amount !== "number" || !frequency) {
+        return { error: "name, amount, and frequency are required" };
+      }
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return { error: "amount must be a positive number" };
+      }
+      const profile = await loadUserProfile(userId);
+      const existing = profile.fixedExpenses ?? [];
+      if (existing.some((e) => e.name.toLowerCase() === rawName.toLowerCase())) {
+        return { error: `an expense named "${rawName}" already exists` };
+      }
+      const next = [...existing, { name: rawName, amount, frequency }];
+      await saveUserProfile(userId, { fixedExpenses: next });
+      return { added: { name: rawName, amount, frequency }, count: next.length };
+    }
+    case "removeExpense": {
+      const rawName = (args.name as string | undefined)?.trim();
+      if (!rawName) return { error: "name is required" };
+      const profile = await loadUserProfile(userId);
+      const existing = profile.fixedExpenses ?? [];
+      const lower = rawName.toLowerCase();
+      const next = existing.filter((e) => e.name.toLowerCase() !== lower);
+      if (next.length === existing.length) {
+        return { removed: false, message: `no expense matched "${rawName}"` };
+      }
+      await saveUserProfile(userId, { fixedExpenses: next });
+      return { removed: true, name: rawName, count: next.length };
+    }
+    case "setBudget": {
+      if (args.reset === true) {
+        await saveUserProfile(userId, { budgetOverrides: null });
+        return { reset: true };
+      }
+      const keys = ["necessities", "investments", "discretionary", "savings"] as const;
+      const profile = await loadUserProfile(userId);
+      const merged: Record<string, number> = { ...(profile.budgetOverrides ?? {}) };
+      let touched = 0;
+      for (const k of keys) {
+        const v = args[k];
+        if (typeof v === "number" && Number.isFinite(v) && v >= 0) {
+          merged[k] = Math.round(v);
+          touched++;
+        }
+      }
+      if (touched === 0) {
+        return { error: "supply at least one of necessities/investments/discretionary/savings, or reset=true" };
+      }
+      await saveUserProfile(userId, {
+        budgetOverrides: merged as UserProfile["budgetOverrides"],
+      });
+      return { overrides: merged };
+    }
     default:
       return { error: `unknown tool: ${name}` };
   }
@@ -215,7 +327,7 @@ Ground rules (non-negotiable):
 - Be direct and specific. When you recommend a move, name the ticker, dollar amount, and account. Avoid hedge words like "consider" or "may want to."
 - Mono type for numbers, tickers, and quantities when possible.
 - Before calling any update* tool, STATE what you're about to change and ask the user to confirm. Only proceed after the user agrees (e.g., they say "yes", "do it", "go ahead"). Do not silently mutate the user's data.
-- You can edit preferences and selected profile fields (risk tolerance, time horizon, sector bias, occupation, annual income, age). You CANNOT change name, email, or password from here — direct the user to Settings → Account.
+- You can edit preferences and selected profile fields (risk tolerance, time horizon, sector bias, occupation, annual income, age). You can also add/remove fixed expenses and adjust the four monthly budget buckets (necessities, investments, discretionary, savings) via addExpense / removeExpense / setBudget. You CANNOT change name, email, or password from here — direct the user to Settings → Account.
 - When the user asks "what should I do today?", call getPortfolioSummary and getPreferences first, then produce a prioritized action list: CONTRIBUTE (Roth transfers), BUY, SELL/TRIM, HARVEST — in that order of tax efficiency.
 - Be honest about stale data. If getSyncStatus shows a source is errored or CSV is old, say so before making recommendations about it.
 

@@ -154,7 +154,8 @@ async function getSpotPrice(currency: string): Promise<number> {
     );
     const p = parseFloat(ticker.price);
     return isNaN(p) ? 0 : p;
-  } catch {
+  } catch (err) {
+    console.error(`[coinbase-api.getSpotPrice] failed for ${currency}:`, err);
     return 0;
   }
 }

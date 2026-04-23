@@ -18,18 +18,57 @@ import { runAnalysis } from "@/lib/analysis";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-interface Body {
+interface Item {
   symbol?: string;
   sector?: string;
   assetClass?: string;
+  customCategoryId?: string | null;
+}
+
+interface Body extends Item {
+  items?: Item[];
   recomputeAnalysis?: boolean;
 }
 
-/** POST /api/classify/override — save a per-user manual sector/asset-class override. */
+interface ValidatedItem {
+  symbol: string;
+  sector: Sector;
+  assetClass?: AssetClass;
+  customCategoryId: string | null | undefined;
+}
+
+function validateItem(raw: Item): ValidatedItem | { error: string } {
+  const symbol = raw.symbol?.trim();
+  if (!symbol) return { error: "symbol required" };
+  const sector = raw.sector as Sector | undefined;
+  if (!sector || !SECTORS.includes(sector)) return { error: "invalid sector" };
+  const assetClass = raw.assetClass as AssetClass | undefined;
+  if (assetClass && !ASSET_CLASSES.includes(assetClass)) {
+    return { error: "invalid assetClass" };
+  }
+  return {
+    symbol,
+    sector,
+    assetClass,
+    customCategoryId: raw.customCategoryId,
+  };
+}
+
+/**
+ * POST /api/classify/override
+ *
+ * Accepts either:
+ *   { symbol, sector, assetClass?, customCategoryId?, recomputeAnalysis? }
+ *   { items: [{...}], recomputeAnalysis? }
+ *
+ * Passing `customCategoryId: null` clears a previously assigned custom category.
+ */
 export async function POST(req: NextRequest) {
   let userId: string;
   try {
-    ({ user: { id: userId } } = await requireUser());
+    ({
+      user: { id: userId },
+    } = await requireUser());
   } catch {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -41,22 +80,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
 
-  const symbol = body.symbol?.trim();
-  const sector = body.sector as Sector | undefined;
-  const assetClass = body.assetClass as AssetClass | undefined;
+  const rawItems: Item[] =
+    Array.isArray(body.items) && body.items.length > 0 ? body.items : [body];
 
-  if (!symbol) {
-    return NextResponse.json({ error: "symbol required" }, { status: 400 });
-  }
-  if (!sector || !SECTORS.includes(sector)) {
-    return NextResponse.json({ error: "invalid sector" }, { status: 400 });
-  }
-  if (assetClass && !ASSET_CLASSES.includes(assetClass)) {
-    return NextResponse.json({ error: "invalid assetClass" }, { status: 400 });
+  const validated: ValidatedItem[] = [];
+  for (const raw of rawItems) {
+    const v = validateItem(raw);
+    if ("error" in v) {
+      return NextResponse.json({ error: v.error }, { status: 400 });
+    }
+    validated.push(v);
   }
 
   try {
-    await saveUserOverride(userId, symbol, sector, assetClass);
+    for (const v of validated) {
+      await saveUserOverride(
+        userId,
+        v.symbol,
+        v.sector,
+        v.assetClass,
+        v.customCategoryId
+      );
+    }
 
     if (body.recomputeAnalysis) {
       const [data, profile] = await Promise.all([
@@ -74,7 +119,7 @@ export async function POST(req: NextRequest) {
       ]);
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, saved: validated.length });
   } catch (error) {
     console.error("[POST /api/classify/override] failed:", error);
     return NextResponse.json(
