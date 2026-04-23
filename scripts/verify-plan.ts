@@ -64,10 +64,17 @@ async function main() {
     process.exit(1);
   }
 
-  const isEmpty = /Run an analysis to build your plan/.test(raw);
+  const isEmpty = /Connect an account to start|Build your plan/.test(raw);
   const sentinels = isEmpty
-    ? ["Plan", "Run an analysis"]
-    : ["Plan", "Paycheck allocation", "Action plan", "Long-term projection"];
+    ? ["Plan", "What you", "Paycheck allocation"]
+    : [
+        "Plan",
+        "Savings rate",
+        "Paycheck allocation",
+        "Milestones",
+        "Action plan",
+        "Long-term projection",
+      ];
   const missing = sentinels.filter((s) => !raw.includes(s));
   if (missing.length > 0) {
     console.log(`▸ Missing sentinels: ${missing.join(", ")}`);

@@ -52,6 +52,8 @@ export default async function DashboardPage() {
       );
       const fresh = runAnalysis(data, profile, classificationMap, {
         emergencyFundTarget: preferences.emergencyFundTarget,
+        emergencyFundAccountIds: preferences.emergencyFundAccountIds,
+        emergencyFundCurrentOverride: preferences.emergencyFundCurrentOverride,
       });
       // Render the fresh result immediately — don't let cache or snapshot
       // persistence failures block the UI from seeing it.

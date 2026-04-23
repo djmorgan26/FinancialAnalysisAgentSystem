@@ -48,7 +48,11 @@ export function runAnalysis(
   data: FinancialData,
   profile: UserProfile,
   classificationMap?: ClassificationMap,
-  options?: { emergencyFundTarget?: number | null }
+  options?: {
+    emergencyFundTarget?: number | null;
+    emergencyFundAccountIds?: string[];
+    emergencyFundCurrentOverride?: number | null;
+  }
 ): AnalysisResult {
   // --- Step 1: Resolve accounts ---
   const accounts = resolveAccounts(data.accounts, profile);
@@ -91,6 +95,8 @@ export function runAnalysis(
     accounts,
     sectorExposure,
     emergencyFundTargetOverride: options?.emergencyFundTarget ?? null,
+    emergencyFundAccountIds: options?.emergencyFundAccountIds ?? [],
+    emergencyFundCurrentOverride: options?.emergencyFundCurrentOverride ?? null,
   });
 
   // --- Step 8: Generate insights ---

@@ -49,6 +49,8 @@ export async function POST() {
 
     const analysis = runAnalysis(data, profile, classificationMap, {
       emergencyFundTarget: preferences.emergencyFundTarget,
+      emergencyFundAccountIds: preferences.emergencyFundAccountIds,
+      emergencyFundCurrentOverride: preferences.emergencyFundCurrentOverride,
     });
 
     await Promise.all([

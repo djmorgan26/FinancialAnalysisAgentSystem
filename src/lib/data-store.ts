@@ -428,6 +428,8 @@ export interface InvestmentPreferences {
   rothIraYtdContributed: number;
   roth401kPercent: number | null;
   emergencyFundTarget: number | null;
+  emergencyFundAccountIds: string[];
+  emergencyFundCurrentOverride: number | null;
   cashFloorBrokerage: number;
   singlePositionCapPercent: number | null;
   coreAllocationMinPercent: number | null;
@@ -445,6 +447,8 @@ export const DEFAULT_PREFERENCES: InvestmentPreferences = {
   rothIraYtdContributed: 0,
   roth401kPercent: null,
   emergencyFundTarget: null,
+  emergencyFundAccountIds: [],
+  emergencyFundCurrentOverride: null,
   cashFloorBrokerage: 0,
   singlePositionCapPercent: null,
   coreAllocationMinPercent: 50,
@@ -478,6 +482,13 @@ export async function loadInvestmentPreferences(
       data.roth_401k_percent != null ? num(data.roth_401k_percent) : null,
     emergencyFundTarget:
       data.emergency_fund_target != null ? num(data.emergency_fund_target) : null,
+    emergencyFundAccountIds: Array.isArray(data.emergency_fund_account_ids)
+      ? (data.emergency_fund_account_ids as string[])
+      : [],
+    emergencyFundCurrentOverride:
+      data.emergency_fund_current_override != null
+        ? num(data.emergency_fund_current_override)
+        : null,
     cashFloorBrokerage: data.cash_floor_brokerage
       ? num(data.cash_floor_brokerage)
       : 0,
@@ -518,6 +529,10 @@ export async function saveInvestmentPreferences(
     row.roth_401k_percent = prefs.roth401kPercent;
   if (prefs.emergencyFundTarget !== undefined)
     row.emergency_fund_target = prefs.emergencyFundTarget;
+  if (prefs.emergencyFundAccountIds !== undefined)
+    row.emergency_fund_account_ids = prefs.emergencyFundAccountIds;
+  if (prefs.emergencyFundCurrentOverride !== undefined)
+    row.emergency_fund_current_override = prefs.emergencyFundCurrentOverride;
   if (prefs.cashFloorBrokerage !== undefined)
     row.cash_floor_brokerage = prefs.cashFloorBrokerage;
   if (prefs.singlePositionCapPercent !== undefined)

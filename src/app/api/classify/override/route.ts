@@ -116,6 +116,8 @@ export async function POST(req: NextRequest) {
       );
       const analysis = runAnalysis(data, profile, map, {
         emergencyFundTarget: preferences.emergencyFundTarget,
+        emergencyFundAccountIds: preferences.emergencyFundAccountIds,
+        emergencyFundCurrentOverride: preferences.emergencyFundCurrentOverride,
       });
       await Promise.all([
         saveAnalysis(userId, analysis),

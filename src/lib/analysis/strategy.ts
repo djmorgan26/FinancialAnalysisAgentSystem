@@ -123,6 +123,10 @@ export function generateStrategy(params: {
   sectorExposure: AllocationBreakdown[];
   /** Optional user-set emergency fund target from investment_preferences. */
   emergencyFundTargetOverride?: number | null;
+  /** Explicit account IDs the user designated as their emergency fund. */
+  emergencyFundAccountIds?: string[];
+  /** Manual override of the current balance, wins over account sums. */
+  emergencyFundCurrentOverride?: number | null;
 }): InvestmentStrategy {
   const {
     profile,
@@ -132,13 +136,17 @@ export function generateStrategy(params: {
     accounts,
     sectorExposure,
     emergencyFundTargetOverride,
+    emergencyFundAccountIds,
+    emergencyFundCurrentOverride,
   } = params;
 
   const monthlyBudget = buildMonthlyBudget(profile, monthlyIncome, monthlySpending);
   const emergencyFund = computeEmergencyFund(
     monthlySpending,
     accounts,
-    emergencyFundTargetOverride
+    emergencyFundTargetOverride,
+    emergencyFundAccountIds,
+    emergencyFundCurrentOverride
   );
   const dcaTargets = buildDCAPlan(
     profile,
@@ -282,19 +290,32 @@ function buildMonthlyBudget(
 function computeEmergencyFund(
   monthlySpending: number,
   accounts: Account[],
-  targetOverride?: number | null
+  targetOverride?: number | null,
+  explicitAccountIds?: string[],
+  currentOverride?: number | null
 ): { target: number; current: number } {
-  // Prefer the user's configured target (investment_preferences.emergency_fund_target).
-  // Fall back to 4× monthly spending — the midpoint of the 3–6 month guideline.
   const target =
     targetOverride != null && targetOverride > 0
       ? Math.round(targetOverride)
       : Math.round(monthlySpending * 4);
 
-  // Emergency fund = cash in savings + checking accounts
-  const current = accounts
-    .filter((a) => a.accountType === "savings" || a.accountType === "checking")
-    .reduce((sum, a) => sum + a.balance, 0);
+  // Priority: explicit manual override > tagged accounts > savings+checking
+  // heuristic. The override exists because some broker APIs (Schwab Trader
+  // for MMF-only accounts) return zero even when the user has real money.
+  if (currentOverride != null && currentOverride >= 0) {
+    return { target, current: Math.round(currentOverride) };
+  }
+
+  const tagged = explicitAccountIds && explicitAccountIds.length > 0;
+  const current = tagged
+    ? accounts
+        .filter((a) => explicitAccountIds!.includes(a.id))
+        .reduce((sum, a) => sum + a.balance, 0)
+    : accounts
+        .filter(
+          (a) => a.accountType === "savings" || a.accountType === "checking"
+        )
+        .reduce((sum, a) => sum + a.balance, 0);
 
   return { target, current };
 }

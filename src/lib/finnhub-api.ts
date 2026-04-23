@@ -170,29 +170,27 @@ export async function getPortfolioNews(
   symbols: string[],
   daysBack: number = 3
 ): Promise<CompanyNews[]> {
-  // Pick top symbols to stay under rate limits
   const topSymbols = symbols
     .filter((s) => s && !s.startsWith("NON") && s !== "SWVXX" && s !== "Cash")
-    .slice(0, 10); // Top 10 holdings
+    .slice(0, 6);
 
   const now = new Date();
   const from = new Date(now.getTime() - daysBack * 24 * 60 * 60 * 1000);
   const toStr = now.toISOString().split("T")[0];
   const fromStr = from.toISOString().split("T")[0];
 
-  const allNews: CompanyNews[] = [];
+  const batches = await Promise.all(
+    topSymbols.map(async (sym) => {
+      try {
+        const news = await getCompanyNews(sym, fromStr, toStr);
+        return news.slice(0, 3);
+      } catch {
+        return [] as CompanyNews[];
+      }
+    })
+  );
+  const allNews = batches.flat();
 
-  for (const sym of topSymbols) {
-    try {
-      const news = await getCompanyNews(sym, fromStr, toStr);
-      allNews.push(...news.slice(0, 3)); // Max 3 per symbol
-      await new Promise((resolve) => setTimeout(resolve, 500)); // Rate limit
-    } catch {
-      // Skip failures silently
-    }
-  }
-
-  // Deduplicate by headline and sort by date
   const seen = new Set<string>();
   const unique = allNews.filter((n) => {
     if (seen.has(n.headline)) return false;

@@ -4,11 +4,22 @@ import { useState } from "react";
 import type { InvestmentPreferences } from "@/lib/data-store";
 import { Card } from "@/components/app/Pill";
 import { PageHeader } from "@/components/app/Page";
+import { formatCurrency } from "@/lib/format";
+
+interface AccountOption {
+  id: string;
+  name: string;
+  platform: string;
+  accountType: string;
+  balance: number;
+}
 
 export function PreferencesForm({
   initial,
+  accounts = [],
 }: {
   initial: InvestmentPreferences;
+  accounts?: AccountOption[];
 }) {
   const [prefs, setPrefs] = useState<InvestmentPreferences>(initial);
   const [saving, setSaving] = useState(false);
@@ -91,6 +102,35 @@ export function PreferencesForm({
               onChange={(v) => update("emergencyFundTarget", v)}
               suffix="$"
             />
+          </Field>
+          <Field
+            label="Emergency fund balance (override)"
+            hint="Optional. If set, this wins over the tagged-account sum. Use it when a broker's API reports a wrong balance — e.g. a new Schwab sweep/MMF account that syncs as $0."
+          >
+            <NumberInput
+              value={prefs.emergencyFundCurrentOverride}
+              onChange={(v) => update("emergencyFundCurrentOverride", v)}
+              suffix="$"
+            />
+          </Field>
+        </div>
+
+        <div className="mt-4">
+          <Field
+            label="Emergency fund accounts"
+            hint={
+              accounts.length > 0
+                ? "Pick the accounts whose balances should count toward your emergency fund. Ignored when the override above is set. If you pick none and leave the override empty, we fall back to summing savings + checking."
+                : "No connected accounts yet — connect an account to pick here."
+            }
+          >
+            {accounts.length > 0 && (
+              <EmergencyAccountPicker
+                accounts={accounts}
+                selected={prefs.emergencyFundAccountIds}
+                onChange={(ids) => update("emergencyFundAccountIds", ids)}
+              />
+            )}
           </Field>
         </div>
       </Card>
@@ -252,6 +292,87 @@ export function PreferencesForm({
         </button>
       </div>
     </>
+  );
+}
+
+function EmergencyAccountPicker({
+  accounts,
+  selected,
+  onChange,
+}: {
+  accounts: AccountOption[];
+  selected: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const picked = new Set(selected);
+  const total = accounts
+    .filter((a) => picked.has(a.id))
+    .reduce((sum, a) => sum + a.balance, 0);
+
+  function toggle(id: string) {
+    const next = new Set(picked);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onChange([...next]);
+  }
+
+  return (
+    <div>
+      <div
+        className="rounded-md divide-y"
+        style={{
+          border: "1px solid var(--border)",
+          background: "var(--bg-inset)",
+        }}
+      >
+        {accounts.map((a) => {
+          const checked = picked.has(a.id);
+          return (
+            <label
+              key={a.id}
+              className="flex items-center gap-3 px-3 py-2 cursor-pointer"
+              style={{ borderColor: "var(--border)" }}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => toggle(a.id)}
+                className="shrink-0"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-medium truncate">
+                  {a.name}
+                </div>
+                <div
+                  className="text-[11px] mt-0.5"
+                  style={{ color: "var(--text-faint)" }}
+                >
+                  {a.platform} · {a.accountType.replace(/_/g, " ")}
+                </div>
+              </div>
+              <div className="mono text-[12.5px] font-semibold">
+                {formatCurrency(a.balance)}
+              </div>
+            </label>
+          );
+        })}
+      </div>
+      <div
+        className="mt-2 flex items-center justify-between text-[11.5px]"
+        style={{ color: "var(--text-muted)" }}
+      >
+        <span>
+          {picked.size === 0
+            ? "None selected — using savings + checking fallback"
+            : `${picked.size} account${picked.size === 1 ? "" : "s"} selected`}
+        </span>
+        {picked.size > 0 && (
+          <span className="mono font-semibold">
+            Counts as: {formatCurrency(total)}
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 

@@ -26,6 +26,8 @@ interface Props {
   monthlyFixedExpenses: number;
   currentEmergencyFund: number;
   monthlyExpenseTarget: number;
+  /** User-configured $ target from investment_preferences. Falls back to 4× monthly spending. */
+  emergencyFundTarget?: number | null;
   hasRothIRA: boolean;
 }
 
@@ -34,14 +36,20 @@ export function PaycheckAllocation({
   monthlyFixedExpenses,
   currentEmergencyFund,
   monthlyExpenseTarget,
+  emergencyFundTarget,
   hasRothIRA,
 }: Props) {
   const [openTip, setOpenTip] = useState<string | null>(null);
 
   const available = Math.max(monthlyNetPay - monthlyFixedExpenses, 0);
+  const resolvedTarget =
+    emergencyFundTarget != null && emergencyFundTarget > 0
+      ? emergencyFundTarget
+      : monthlyExpenseTarget * 4;
   const emergencyMonths =
     monthlyExpenseTarget > 0 ? currentEmergencyFund / monthlyExpenseTarget : 0;
-  const needsEmergencyFund = emergencyMonths < 3;
+  const needsEmergencyFund =
+    resolvedTarget > 0 && currentEmergencyFund < resolvedTarget;
 
   const buckets = useMemo<Bucket[]>(() => {
     const b: Bucket[] = [];
@@ -55,12 +63,13 @@ export function PaycheckAllocation({
     );
 
     if (needsEmergencyFund) {
+      const remaining = Math.max(resolvedTarget - currentEmergencyFund, 0);
       b.push({
         id: "emergency",
         label: "Emergency fund",
         amount: emergencyAmount,
         color: bucketPalette[1],
-        description: `Build to ${formatCurrency(monthlyExpenseTarget * 4)} (4 months). You're at ${emergencyMonths.toFixed(1)} months.`,
+        description: `Build to ${formatCurrency(resolvedTarget)}. You're at ${formatCurrency(currentEmergencyFund)} (${emergencyMonths.toFixed(1)} mo of spending) — ${formatCurrency(remaining)} to go.`,
         tip: "Set a recurring transfer from checking to savings every payday. Once you hit target, redirect to investing.",
       });
     }

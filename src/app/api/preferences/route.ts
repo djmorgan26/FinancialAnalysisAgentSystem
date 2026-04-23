@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/supabase/server";
 import {
   invalidateAnalysis,
@@ -24,10 +25,20 @@ export async function PATCH(req: NextRequest) {
     // Emergency fund target, sector caps, core tickers, etc. all feed the
     // analysis — drop the cache so the dashboard recomputes.
     await invalidateAnalysis(user.id);
+    revalidatePath("/plan");
+    revalidatePath("/");
     return NextResponse.json({ ok: true });
   } catch (err) {
+    console.error("[PATCH /api/preferences] failed:", err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "failed" },
+      {
+        error:
+          err instanceof Error
+            ? err.message
+            : typeof err === "object" && err && "message" in err
+              ? String((err as { message: unknown }).message)
+              : "failed",
+      },
       { status: 500 }
     );
   }
