@@ -69,16 +69,31 @@ async function main() {
   });
   console.log(`▸ HTTP ${res.status}`);
   const raw = await res.text();
-  if (res.status === 200) {
-    // Pull the net-worth hero out of the HTML if present.
-    const m = raw.match(/\$[0-9,]+(?:\.\d+)?/g);
-    if (m) console.log(`▸ $ figures on page: ${m.slice(0, 4).join(", ")}`);
-    console.log("\n✅ DASHBOARD RENDERING OK");
-  } else {
+  if (res.status !== 200) {
     console.log(raw.slice(0, 600));
     console.log("\n❌ Dashboard returned non-200");
     process.exit(1);
   }
+
+  const isZeroState = /connect your first/i.test(raw);
+  const sentinels = isZeroState
+    ? ["Dashboard", "Charles Schwab", "Coinbase"]
+    : ["Dashboard", "Cash &amp; spending", "Flags", "News", "Top positions"];
+  const missing = sentinels.filter((s) => !raw.includes(s));
+  if (missing.length > 0) {
+    console.log(`▸ Missing sentinels on dashboard: ${missing.join(", ")}`);
+    console.log("\n❌ Dashboard content check failed");
+    process.exit(1);
+  }
+
+  if (isZeroState) {
+    console.log("▸ Dashboard is in ZeroState (test user has no data — expected)");
+  } else {
+    const m = raw.match(/\$[0-9,]+(?:\.\d+)?/g);
+    if (m) console.log(`▸ $ figures on page: ${m.slice(0, 4).join(", ")}`);
+  }
+  console.log(`▸ All sentinels present: ${sentinels.join(", ")}`);
+  console.log("\n✅ DASHBOARD RENDERING OK");
 }
 
 main().catch((e) => {

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { RefreshCw, Upload, Link as LinkIcon, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { RefreshCw, Upload, Link as LinkIcon, X, RotateCcw, Pencil, Check } from "lucide-react";
 import { Card, StatusBadge } from "@/components/app/Pill";
 
 type ConnectionState =
@@ -19,6 +19,7 @@ interface ConnectionsResponse {
     needsReauth?: boolean;
     expiresAt?: string | null;
     authUrl?: string | null;
+    accounts?: { id: string; name: string; last4: string | null }[];
   };
   finnhub: { configured: boolean; connected: boolean };
   coinbase: { configured: boolean; connected: boolean };
@@ -164,29 +165,56 @@ export function ConnectionsClient() {
       <div className="grid md:grid-cols-2 gap-3 mb-6">
         <ConnCard
           name="Charles Schwab"
-          accounts="Individual, Roth IRA — OAuth · live"
+          accounts="OAuth · live"
           meta={
             data.schwab.configured
               ? data.schwab.connected
-                ? `Token valid${data.schwab.expiresAt ? ` until ${new Date(data.schwab.expiresAt).toLocaleDateString()}` : ""}`
+                ? `Token valid${data.schwab.expiresAt ? ` until ${new Date(data.schwab.expiresAt).toLocaleDateString()}` : ""}. Re-authorize to add or change linked accounts.`
                 : "Token expired — reauth needed (7-day Schwab limit)"
               : "Add SCHWAB_APP_KEY + SCHWAB_APP_SECRET to enable"
+          }
+          detail={
+            data.schwab.accounts && data.schwab.accounts.length > 0 ? (
+              <SchwabAccountList
+                accounts={data.schwab.accounts}
+                onRename={(last4, name) => {
+                  fetch("/api/schwab/nicknames", {
+                    method: "PATCH",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ last4, name }),
+                  }).then(() => {
+                    setToast(`Renamed to "${name}".`);
+                    load();
+                  });
+                }}
+              />
+            ) : null
           }
           state={schwabState}
           actions={
             <>
               {schwabState === "connected" && (
-                <button
-                  className="btn btn-sm btn-primary"
-                  onClick={syncSchwab}
-                  disabled={syncing === "schwab"}
-                >
-                  <RefreshCw
-                    size={13}
-                    className={syncing === "schwab" ? "animate-spin" : ""}
-                  />
-                  Sync now
-                </button>
+                <>
+                  <button
+                    className="btn btn-sm"
+                    onClick={connectSchwab}
+                    title="Re-run OAuth to add or change which accounts are linked"
+                  >
+                    <RotateCcw size={13} />
+                    Re-authorize
+                  </button>
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={syncSchwab}
+                    disabled={syncing === "schwab"}
+                  >
+                    <RefreshCw
+                      size={13}
+                      className={syncing === "schwab" ? "animate-spin" : ""}
+                    />
+                    Sync now
+                  </button>
+                </>
               )}
               {schwabState === "error" && (
                 <button className="btn btn-sm btn-primary" onClick={connectSchwab}>
@@ -318,16 +346,101 @@ export function ConnectionsClient() {
   );
 }
 
+function stripLast4(name: string, last4: string | null): string {
+  if (!last4) return name;
+  return name.replace(new RegExp(`\\s*···${last4}\\s*$`), "").trim() || name;
+}
+
+function SchwabAccountList({
+  accounts,
+  onRename,
+}: {
+  accounts: { id: string; name: string; last4: string | null }[];
+  onRename: (last4: string, name: string) => void;
+}) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function startEdit(acct: { name: string; last4: string | null }) {
+    if (!acct.last4) return;
+    setDraft(stripLast4(acct.name, acct.last4));
+    setEditing(acct.last4);
+    setTimeout(() => inputRef.current?.select(), 0);
+  }
+
+  function commit(last4: string) {
+    if (draft.trim()) onRename(last4, draft.trim());
+    setEditing(null);
+  }
+
+  return (
+    <div className="mt-3 space-y-1.5">
+      {accounts.map((acct) => (
+        <div key={acct.id} className="flex items-center gap-2 group">
+          {editing === acct.last4 ? (
+            <>
+              <input
+                ref={inputRef}
+                className="flex-1 text-[12px] mono px-2 py-0.5 rounded"
+                style={{
+                  background: "var(--bg-inset)",
+                  border: "1px solid var(--border-strong)",
+                  color: "var(--text)",
+                  outline: "none",
+                }}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commit(acct.last4!);
+                  if (e.key === "Escape") setEditing(null);
+                }}
+              />
+              <button
+                className="btn btn-ghost btn-sm p-1"
+                onClick={() => commit(acct.last4!)}
+                title="Save"
+              >
+                <Check size={12} />
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="flex-1 text-[12px] mono" style={{ color: "var(--text-muted)" }}>
+                {stripLast4(acct.name, acct.last4)}
+                {acct.last4 && (
+                  <span className="ml-1.5 opacity-40">···{acct.last4}</span>
+                )}
+              </span>
+              {acct.last4 && (
+                <button
+                  className="btn btn-ghost btn-sm p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => startEdit(acct)}
+                  title="Rename"
+                >
+                  <Pencil size={11} />
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ConnCard({
   name,
   accounts,
   meta,
+  detail,
   state,
   actions,
 }: {
   name: string;
   accounts: string;
   meta: string;
+  detail?: React.ReactNode;
   state: ConnectionState;
   actions?: React.ReactNode;
 }) {
@@ -357,6 +470,7 @@ function ConnCard({
       >
         {meta}
       </div>
+      {detail}
       {actions && <div className="mt-4 flex gap-2 justify-end">{actions}</div>}
     </Card>
   );

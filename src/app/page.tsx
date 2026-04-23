@@ -5,7 +5,7 @@ import { ShellWrapper } from "@/components/app/ShellWrapper";
 import { PageContainer, PageHeader } from "@/components/app/Page";
 import { Card, StatusBadge } from "@/components/app/Pill";
 import { CashSpending } from "@/components/app/CashSpending";
-import { FlagsList } from "@/components/app/FlagsList";
+import { FlagsNewsTabs } from "@/components/app/FlagsNewsTabs";
 import { requireUser } from "@/lib/supabase/server";
 import {
   createSnapshot,
@@ -267,11 +267,7 @@ function DashboardContent({
           )}
         </Card>
         <Card>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-[14px] font-semibold">Flags &amp; nudges</h3>
-            <span className="chip">{flags.length} open</span>
-          </div>
-          <FlagsList flags={flags} />
+          <FlagsNewsTabs flags={flags} />
         </Card>
       </div>
 

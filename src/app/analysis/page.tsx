@@ -7,9 +7,13 @@ import {
   ClassificationReview,
   type CategorizeRow,
 } from "@/components/app/ClassificationReview";
+import { TradeIdeas } from "@/components/app/TradeIdeas";
+import { PlatformOverlap } from "@/components/app/PlatformOverlap";
 import { requireUser } from "@/lib/supabase/server";
 import {
+  loadAnalysis,
   loadFinancialData,
+  loadUserProfile,
   getOnboardingComplete,
 } from "@/lib/data-store";
 import {
@@ -26,7 +30,11 @@ export default async function AnalysisPage() {
   const { user } = await requireUser();
   if (!(await getOnboardingComplete(user.id))) redirect("/onboarding");
 
-  const data = await loadFinancialData(user.id);
+  const [data, analysis, profile] = await Promise.all([
+    loadFinancialData(user.id),
+    loadAnalysis(user.id),
+    loadUserProfile(user.id),
+  ]);
 
   const allHoldings = [...data.holdings].sort(
     (a, b) => b.currentValue - a.currentValue
@@ -174,6 +182,17 @@ export default async function AnalysisPage() {
         </div>
 
         <PositionsExplorer holdings={data.holdings} accounts={data.accounts} />
+
+        <div className="space-y-6 mt-6">
+          <TradeIdeas
+            holdings={data.holdings}
+            sectorBias={profile.investmentPreferences.sectorBias}
+            monthlyInvestmentBudget={
+              analysis?.strategy.monthlyInvestmentBudget ?? 0
+            }
+          />
+          <PlatformOverlap holdings={data.holdings} />
+        </div>
       </PageContainer>
     </ShellWrapper>
   );

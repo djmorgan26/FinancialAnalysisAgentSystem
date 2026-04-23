@@ -3,6 +3,7 @@
  */
 import { NextResponse } from "next/server";
 import * as schwab from "@/lib/schwab-api";
+import { syncSchwabToSupabase } from "@/lib/schwab-sync";
 import * as finnhub from "@/lib/finnhub-api";
 import * as coinbase from "@/lib/coinbase-api";
 import { loadAnalysis, saveAnalysis, writeSyncLog } from "@/lib/data-store";
@@ -50,10 +51,10 @@ export async function POST() {
     try {
       const token = await schwab.getValidToken(userId);
       if (token) {
-        const data = await schwab.fetchAllSchwabData(userId);
+        const synced = await syncSchwabToSupabase(userId);
         result.schwab = {
           success: true,
-          message: `Synced ${data.accounts.length} accounts`,
+          message: `Synced ${synced.accountCount} accounts, ${synced.positionCount} positions`,
         };
         result.overall.dataSourcesUsed.push("schwab");
       } else {

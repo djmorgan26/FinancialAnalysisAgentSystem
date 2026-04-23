@@ -10,6 +10,8 @@ import type {
   FixedExpense,
   UserProfile,
 } from "@/lib/types";
+import { CashFlow6Mo } from "./CashFlow6Mo";
+import { SpendingCategories } from "./SpendingCategories";
 
 type Props = {
   analysis: AnalysisResult | null;
@@ -211,7 +213,7 @@ export function CashSpending({ analysis, profile }: Props) {
         </div>
       )}
 
-      <div className="grid md:grid-cols-3 gap-6">
+      <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-6">
         {/* Emergency fund */}
         <div>
           <div className="flex items-baseline justify-between mb-2">
@@ -352,6 +354,13 @@ export function CashSpending({ analysis, profile }: Props) {
             </div>
           )}
         </div>
+
+        {/* Flow / Categories toggle */}
+        <FlowCategoriesCol
+          monthlyIncome={analysis?.monthlyIncome ?? 0}
+          monthlySpending={monthlySpending}
+          spendingBreakdown={analysis?.spendingBreakdown ?? []}
+        />
 
         {/* Fixed expenses list + add form */}
         <div>
@@ -701,5 +710,64 @@ function AddExpenseForm({
         Add
       </button>
     </form>
+  );
+}
+
+function FlowCategoriesCol({
+  monthlyIncome,
+  monthlySpending,
+  spendingBreakdown,
+}: {
+  monthlyIncome: number;
+  monthlySpending: number;
+  spendingBreakdown: AnalysisResult["spendingBreakdown"];
+}) {
+  const [view, setView] = useState<"flow" | "categories">("flow");
+  return (
+    <div>
+      <div className="flex items-baseline justify-between mb-2 gap-2">
+        <div className="text-[11px] uppercase tracking-wider text-[color:var(--text-muted)]">
+          {view === "flow" ? "6-month flow" : "Spending by category"}
+        </div>
+        <div
+          className="inline-flex rounded-md overflow-hidden border"
+          style={{ borderColor: "var(--border)" }}
+        >
+          <button
+            type="button"
+            onClick={() => setView("flow")}
+            className="text-[10.5px] px-2 py-0.5"
+            style={{
+              background: view === "flow" ? "var(--bg-inset)" : "transparent",
+              color: view === "flow" ? "var(--text)" : "var(--text-muted)",
+              borderRight: "1px solid var(--border)",
+            }}
+          >
+            Flow
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("categories")}
+            className="text-[10.5px] px-2 py-0.5"
+            style={{
+              background:
+                view === "categories" ? "var(--bg-inset)" : "transparent",
+              color:
+                view === "categories" ? "var(--text)" : "var(--text-muted)",
+            }}
+          >
+            Categories
+          </button>
+        </div>
+      </div>
+      {view === "flow" ? (
+        <CashFlow6Mo
+          monthlyIncome={monthlyIncome}
+          monthlySpending={monthlySpending}
+        />
+      ) : (
+        <SpendingCategories data={spendingBreakdown} />
+      )}
+    </div>
   );
 }

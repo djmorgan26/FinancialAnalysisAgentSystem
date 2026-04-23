@@ -20,13 +20,24 @@ export async function GET() {
   let schwabStatus;
   if (schwab.isConfigured()) {
     const status = await schwab.getConnectionStatus(userId);
+    const { data: schwabAccounts } = await getSupabaseAdmin()
+      .from("accounts")
+      .select("id, name, last4")
+      .eq("user_id", userId)
+      .eq("platform", "schwab")
+      .order("name");
     schwabStatus = {
       configured: true,
       ...status,
-      authUrl: status.needsReauth ? schwab.getAuthorizationUrl(userId) : null,
+      authUrl: schwab.getAuthorizationUrl(userId),
+      accounts: (schwabAccounts ?? []).map((a) => ({
+        id: a.id as string,
+        name: a.name as string,
+        last4: (a.last4 as string | null) ?? null,
+      })),
     };
   } else {
-    schwabStatus = { configured: false, connected: false, needsReauth: true };
+    schwabStatus = { configured: false, connected: false, needsReauth: true, accounts: [] };
   }
 
   // ---- Finnhub (global, not per user) ----

@@ -7,7 +7,9 @@ import {
   LayoutDashboard,
   Cable,
   BarChart3,
+  ListTodo,
   History as HistoryIcon,
+  Newspaper,
   Sparkles,
   Settings,
   Coins,
@@ -28,7 +30,9 @@ const PAGES: QuickSearchItem[] = [
   { type: "page", label: "Dashboard", subtitle: "Overview", href: "/" },
   { type: "page", label: "Connections", subtitle: "Link accounts", href: "/connections" },
   { type: "page", label: "Analysis", subtitle: "Positions & allocation", href: "/analysis" },
+  { type: "page", label: "Plan", subtitle: "Paycheck, action plan, simulation", href: "/plan", keywords: "dca simulation allocation action paycheck" },
   { type: "page", label: "History", subtitle: "Snapshots & changes", href: "/history" },
+  { type: "page", label: "News", subtitle: "Portfolio & market headlines", href: "/news", keywords: "finnhub headlines market" },
   { type: "page", label: "Assistant", subtitle: "AI brief & chat", href: "/assistant" },
   { type: "page", label: "Settings", subtitle: "Profile & preferences", href: "/settings/preferences" },
 ];
@@ -49,7 +53,9 @@ function pageIcon(label: string) {
     case "Dashboard": return LayoutDashboard;
     case "Connections": return Cable;
     case "Analysis": return BarChart3;
+    case "Plan": return ListTodo;
     case "History": return HistoryIcon;
+    case "News": return Newspaper;
     case "Assistant": return Sparkles;
     case "Settings": return Settings;
     default: return BarChart3;
