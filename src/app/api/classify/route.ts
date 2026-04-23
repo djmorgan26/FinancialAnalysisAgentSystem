@@ -6,6 +6,7 @@ import {
 } from "@/lib/classification";
 import {
   loadFinancialData,
+  loadInvestmentPreferences,
   loadUserProfile,
   saveAnalysis,
   createSnapshot,
@@ -74,12 +75,17 @@ export async function POST(req: NextRequest) {
 
     // Optionally recompute analysis so the dashboard reflects the new sectors.
     if (body.recomputeAnalysis) {
-      const profile = await loadUserProfile(userId);
+      const [profile, preferences] = await Promise.all([
+        loadUserProfile(userId),
+        loadInvestmentPreferences(userId),
+      ]);
       const fresh = await resolveClassifications(
         data.holdings.map((h) => h.symbol),
         userId
       );
-      const analysis = runAnalysis(data, profile, fresh);
+      const analysis = runAnalysis(data, profile, fresh, {
+        emergencyFundTarget: preferences.emergencyFundTarget,
+      });
       await Promise.all([
         saveAnalysis(userId, analysis),
         createSnapshot(userId, analysis).catch(() => undefined),

@@ -3,6 +3,7 @@ import {
   loadAnalysis,
   saveAnalysis,
   loadFinancialData,
+  loadInvestmentPreferences,
   loadUserProfile,
   createSnapshot,
 } from "@/lib/data-store";
@@ -35,9 +36,10 @@ export async function GET() {
 export async function POST() {
   try {
     const { user } = await requireUser();
-    const [data, profile] = await Promise.all([
+    const [data, profile, preferences] = await Promise.all([
       loadFinancialData(user.id),
       loadUserProfile(user.id),
+      loadInvestmentPreferences(user.id),
     ]);
 
     const classificationMap = await resolveClassifications(
@@ -45,7 +47,9 @@ export async function POST() {
       user.id
     );
 
-    const analysis = runAnalysis(data, profile, classificationMap);
+    const analysis = runAnalysis(data, profile, classificationMap, {
+      emergencyFundTarget: preferences.emergencyFundTarget,
+    });
 
     await Promise.all([
       saveAnalysis(user.id, analysis),

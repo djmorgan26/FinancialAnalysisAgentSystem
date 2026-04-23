@@ -9,6 +9,7 @@ import {
 import type { Sector, AssetClass } from "@/lib/types";
 import {
   loadFinancialData,
+  loadInvestmentPreferences,
   loadUserProfile,
   saveAnalysis,
   createSnapshot,
@@ -104,15 +105,18 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.recomputeAnalysis) {
-      const [data, profile] = await Promise.all([
+      const [data, profile, preferences] = await Promise.all([
         loadFinancialData(userId),
         loadUserProfile(userId),
+        loadInvestmentPreferences(userId),
       ]);
       const map = await resolveClassifications(
         data.holdings.map((h) => h.symbol),
         userId
       );
-      const analysis = runAnalysis(data, profile, map);
+      const analysis = runAnalysis(data, profile, map, {
+        emergencyFundTarget: preferences.emergencyFundTarget,
+      });
       await Promise.all([
         saveAnalysis(userId, analysis),
         createSnapshot(userId, analysis).catch(() => undefined),

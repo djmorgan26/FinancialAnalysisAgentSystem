@@ -46,6 +46,21 @@ export function ConnectionsClient() {
 
   useEffect(() => {
     load();
+    // Surface post-OAuth redirect status as a toast, then clean the URL.
+    const params = new URLSearchParams(window.location.search);
+    const schwab = params.get("schwab");
+    if (schwab === "connected") {
+      setToast("Schwab connected.");
+    } else if (schwab === "error") {
+      const reason = params.get("reason") ?? "unknown";
+      setToast(`Schwab connection failed: ${schwabErrorMessage(reason)}`);
+    }
+    if (schwab) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("schwab");
+      url.searchParams.delete("reason");
+      window.history.replaceState({}, "", url.toString());
+    }
   }, []);
 
   async function syncSchwab() {
@@ -372,6 +387,24 @@ function LoadingCards() {
       ))}
     </div>
   );
+}
+
+function schwabErrorMessage(reason: string): string {
+  switch (reason) {
+    case "no_code":
+      return "Schwab didn't return an authorization code. Try again.";
+    case "missing_state":
+    case "invalid_state":
+      return "The authorization link was malformed. Start over from Connections.";
+    case "state_mismatch":
+      return "This authorization was started from a different account. Sign in as the account that started the flow, then retry.";
+    case "unauthorized":
+      return "Your session expired during the Schwab redirect. Sign in and retry.";
+    case "exchange_failed":
+      return "Schwab rejected the authorization code. Start the flow again.";
+    default:
+      return "Unknown error. Retry from the Connections page.";
+  }
 }
 
 function relTime(iso: string): string {

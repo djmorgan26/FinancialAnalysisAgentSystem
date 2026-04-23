@@ -7,6 +7,7 @@ import * as coinbase from "@/lib/coinbase-api";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireUser } from "@/lib/supabase/server";
 import { deterministicId } from "@/lib/importers/utils";
+import { invalidateAnalysis } from "@/lib/data-store";
 
 export async function GET() {
   if (!coinbase.isConfigured()) {
@@ -109,6 +110,8 @@ export async function POST() {
         symbols: holdings.map((h) => h.symbol),
       },
     });
+
+    await invalidateAnalysis(userId);
 
     return NextResponse.json({
       success: true,

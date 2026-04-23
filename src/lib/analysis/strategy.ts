@@ -121,12 +121,25 @@ export function generateStrategy(params: {
   holdings: Holding[];
   accounts: Account[];
   sectorExposure: AllocationBreakdown[];
+  /** Optional user-set emergency fund target from investment_preferences. */
+  emergencyFundTargetOverride?: number | null;
 }): InvestmentStrategy {
-  const { profile, monthlyIncome, monthlySpending, holdings, accounts, sectorExposure } =
-    params;
+  const {
+    profile,
+    monthlyIncome,
+    monthlySpending,
+    holdings,
+    accounts,
+    sectorExposure,
+    emergencyFundTargetOverride,
+  } = params;
 
   const monthlyBudget = buildMonthlyBudget(profile, monthlyIncome, monthlySpending);
-  const emergencyFund = computeEmergencyFund(monthlySpending, accounts);
+  const emergencyFund = computeEmergencyFund(
+    monthlySpending,
+    accounts,
+    emergencyFundTargetOverride
+  );
   const dcaTargets = buildDCAPlan(
     profile,
     monthlyBudget.investments,
@@ -268,11 +281,15 @@ function buildMonthlyBudget(
  */
 function computeEmergencyFund(
   monthlySpending: number,
-  accounts: Account[]
+  accounts: Account[],
+  targetOverride?: number | null
 ): { target: number; current: number } {
-  // Use the midpoint of 3-6 months for young earners with stable employment
-  const targetMonths = 4;
-  const target = Math.round(monthlySpending * targetMonths);
+  // Prefer the user's configured target (investment_preferences.emergency_fund_target).
+  // Fall back to 4× monthly spending — the midpoint of the 3–6 month guideline.
+  const target =
+    targetOverride != null && targetOverride > 0
+      ? Math.round(targetOverride)
+      : Math.round(monthlySpending * 4);
 
   // Emergency fund = cash in savings + checking accounts
   const current = accounts

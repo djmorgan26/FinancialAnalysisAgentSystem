@@ -15,6 +15,7 @@ import {
 import { deterministicId, todayISO } from "@/lib/importers/utils";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireUser } from "@/lib/supabase/server";
+import { invalidateAnalysis } from "@/lib/data-store";
 import type { AccountType, AssetClass, Sector } from "@/lib/types";
 
 export async function GET() {
@@ -76,6 +77,17 @@ export async function POST() {
       data.accounts
     );
 
+    // Delete ALL existing schwab holdings for this user first so closed/renamed
+    // accounts don't leak orphan holdings when they drop out of the fresh fetch.
+    {
+      const { error: delErr } = await supabase
+        .from("holdings")
+        .delete()
+        .eq("user_id", userId)
+        .eq("platform", "schwab");
+      if (delErr) throw new Error(`holdings delete: ${delErr.message}`);
+    }
+
     if (accountRows.length > 0) {
       const { error } = await supabase
         .from("accounts")
@@ -83,15 +95,19 @@ export async function POST() {
       if (error) throw new Error(`accounts upsert: ${error.message}`);
     }
 
+    // Remove any schwab accounts that no longer appear in the fresh fetch.
     const accountIds = accountRows.map((a) => a.id);
-    if (accountIds.length > 0) {
-      const { error: delErr } = await supabase
-        .from("holdings")
+    {
+      const del = supabase
+        .from("accounts")
         .delete()
         .eq("user_id", userId)
-        .eq("platform", "schwab")
-        .in("account_id", accountIds);
-      if (delErr) throw new Error(`holdings delete: ${delErr.message}`);
+        .eq("platform", "schwab");
+      const { error: delErr } =
+        accountIds.length > 0
+          ? await del.not("id", "in", `(${accountIds.join(",")})`)
+          : await del;
+      if (delErr) throw new Error(`accounts prune: ${delErr.message}`);
     }
 
     if (holdingRows.length > 0) {
@@ -111,6 +127,8 @@ export async function POST() {
         accounts: accountDiagnostics,
       },
     });
+
+    await invalidateAnalysis(userId);
 
     return NextResponse.json({
       success: true,

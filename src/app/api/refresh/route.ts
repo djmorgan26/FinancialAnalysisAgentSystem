@@ -5,11 +5,16 @@ import { NextResponse } from "next/server";
 import * as schwab from "@/lib/schwab-api";
 import * as finnhub from "@/lib/finnhub-api";
 import * as coinbase from "@/lib/coinbase-api";
-import { loadAnalysis, saveAnalysis } from "@/lib/data-store";
+import { loadAnalysis, saveAnalysis, writeSyncLog } from "@/lib/data-store";
 import { requireUser } from "@/lib/supabase/server";
 
 interface RefreshResult {
-  schwab: { success: boolean; message: string };
+  schwab: {
+    success: boolean;
+    message: string;
+    needsReauth?: boolean;
+    authUrl?: string;
+  };
   finnhub: { success: boolean; message: string };
   coinbase: { success: boolean; message: string };
   overall: {
@@ -52,10 +57,19 @@ export async function POST() {
         };
         result.overall.dataSourcesUsed.push("schwab");
       } else {
+        const authUrl = schwab.getAuthorizationUrl(userId);
         result.schwab = {
           success: false,
-          message: "Token expired — re-authenticate from the Connections page",
+          needsReauth: true,
+          authUrl,
+          message: "Schwab session expired — reconnect from the Connections page",
         };
+        await writeSyncLog(userId, {
+          source: "schwab",
+          status: "needs_reauth",
+          message: "Refresh token expired or revoked",
+          metadata: { authUrl },
+        });
       }
     } catch (err: unknown) {
       result.schwab = {
@@ -87,17 +101,24 @@ export async function POST() {
     try {
       const analysis = await loadAnalysis(userId);
       if (analysis) {
-        const symbols = [
-          ...new Set(analysis.holdings.map((h) => h.symbol)),
-        ].filter(
-          (s) => s && !s.startsWith("NON") && s !== "SWVXX" && s !== "Cash"
+        // Only quote real equities — never apply stock quotes to cash/crypto
+        // holdings since symbols like CASH/BTC/ETH collide with real tickers.
+        const quotable = analysis.holdings.filter(
+          (h) =>
+            h.assetClass !== "cash" &&
+            h.assetClass !== "crypto" &&
+            h.symbol &&
+            !h.symbol.startsWith("NON")
         );
+        const symbols = [...new Set(quotable.map((h) => h.symbol))];
 
         const quotes = await finnhub.getQuotes(symbols);
         const quoteMap = new Map(quotes.map((q) => [q.symbol, q]));
 
+        const quotableIds = new Set(quotable.map((h) => h.id));
         let updatedCount = 0;
         for (const holding of analysis.holdings) {
+          if (!quotableIds.has(holding.id)) continue;
           const quote = quoteMap.get(holding.symbol);
           if (quote && quote.current > 0) {
             holding.currentPrice = quote.current;

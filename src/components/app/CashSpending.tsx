@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Settings as SettingsIcon } from "lucide-react";
 import type {
   AnalysisResult,
   BudgetOverrides,
@@ -154,6 +156,27 @@ export function CashSpending({ analysis, profile }: Props) {
     await patchProfile({ budgetOverrides: null });
   }
 
+  async function patchPreferences(body: Record<string, unknown>) {
+    setSaving(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/preferences", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b.error ?? `Failed (${res.status})`);
+      }
+      router.refresh();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const empty =
     emergencyTarget === 0 && !budget && fixedMonthly.length === 0;
 
@@ -191,77 +214,101 @@ export function CashSpending({ analysis, profile }: Props) {
       <div className="grid md:grid-cols-3 gap-6">
         {/* Emergency fund */}
         <div>
-          <div className="text-[11px] uppercase tracking-wider text-[color:var(--text-muted)] mb-2">
-            Emergency fund
-          </div>
-          {emergencyTarget > 0 ? (
-            <>
-              <div className="mono text-[20px] font-semibold">
-                ${Math.round(emergencyCurrent).toLocaleString()}
-                <span
-                  className="text-[12px] font-normal ml-2"
-                  style={{ color: "var(--text-faint)" }}
-                >
-                  / ${Math.round(emergencyTarget).toLocaleString()}
-                </span>
-              </div>
-              <div
-                className="text-[11.5px] mb-2"
-                style={{ color: "var(--text-muted)" }}
-              >
-                {monthsCovered > 0 ? (
-                  <>
-                    <span className="mono" style={{ color: "var(--text)" }}>
-                      {monthsCovered.toFixed(1)}
-                    </span>{" "}
-                    months of spending covered
-                  </>
-                ) : (
-                  "No spending baseline yet"
-                )}
-              </div>
-              <div
-                className="h-1.5 rounded-full overflow-hidden"
-                style={{ background: "var(--bg-inset)" }}
-              >
-                <div
-                  className="h-full rounded-full"
-                  style={{ width: `${efPct}%`, background: efTone }}
-                />
-              </div>
-              <div
-                className="text-[10.5px] mt-1.5"
-                style={{ color: "var(--text-faint)" }}
-              >
-                {efPct >= 100
-                  ? "Fully funded — excess can be invested"
-                  : `${efPct.toFixed(0)}% of target`}
-              </div>
-            </>
-          ) : (
-            <div className="text-[12px] text-[color:var(--text-muted)]">
-              Set an emergency-fund target in Settings → Preferences.
+          <div className="flex items-baseline justify-between mb-2">
+            <div className="text-[11px] uppercase tracking-wider text-[color:var(--text-muted)]">
+              Emergency fund
             </div>
-          )}
+            <Link
+              href="/settings/preferences"
+              className="text-[10.5px] flex items-center gap-1"
+              style={{ color: "var(--text-muted)" }}
+              title="Edit in Settings → Preferences"
+            >
+              <SettingsIcon size={11} />
+            </Link>
+          </div>
+          <div className="mono text-[20px] font-semibold">
+            ${Math.round(emergencyCurrent).toLocaleString()}
+            <span
+              className="text-[12px] font-normal ml-2"
+              style={{ color: "var(--text-faint)" }}
+            >
+              /{" "}
+              <EmergencyTargetEditor
+                target={emergencyTarget}
+                saving={saving}
+                onCommit={(v) =>
+                  patchPreferences({ emergencyFundTarget: v })
+                }
+              />
+            </span>
+          </div>
+          <div
+            className="text-[11.5px] mb-2"
+            style={{ color: "var(--text-muted)" }}
+          >
+            {monthsCovered > 0 ? (
+              <>
+                <span className="mono" style={{ color: "var(--text)" }}>
+                  {monthsCovered.toFixed(1)}
+                </span>{" "}
+                months of spending covered
+              </>
+            ) : (
+              "No spending baseline yet"
+            )}
+          </div>
+          <div
+            className="h-1.5 rounded-full overflow-hidden"
+            style={{ background: "var(--bg-inset)" }}
+          >
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: `${Math.min(100, efPct)}%`,
+                background: efTone,
+              }}
+            />
+          </div>
+          <div
+            className="text-[10.5px] mt-1.5"
+            style={{ color: "var(--text-faint)" }}
+          >
+            {emergencyTarget <= 0
+              ? "Click target to set"
+              : efPct >= 100
+                ? "Fully funded — excess can be invested"
+                : `${efPct.toFixed(0)}% of target`}
+          </div>
         </div>
 
         {/* Monthly budget split */}
         <div>
-          <div className="flex items-baseline justify-between mb-2">
+          <div className="flex items-baseline justify-between mb-2 gap-2">
             <div className="text-[11px] uppercase tracking-wider text-[color:var(--text-muted)]">
               Monthly budget
             </div>
-            {hasAnyOverride && (
-              <button
-                onClick={resetBudget}
-                disabled={saving}
-                className="text-[10.5px] underline underline-offset-4"
+            <div className="flex items-baseline gap-2">
+              {hasAnyOverride && (
+                <button
+                  onClick={resetBudget}
+                  disabled={saving}
+                  className="text-[10.5px] underline underline-offset-4"
+                  style={{ color: "var(--text-muted)" }}
+                  title="Clear all budget overrides"
+                >
+                  reset
+                </button>
+              )}
+              <Link
+                href="/settings/profile"
+                className="flex items-baseline"
                 style={{ color: "var(--text-muted)" }}
-                title="Clear all budget overrides"
+                title="Edit income in Settings → Profile"
               >
-                reset to computed
-              </button>
-            )}
+                <SettingsIcon size={11} />
+              </Link>
+            </div>
           </div>
           {budget && budgetTotal > 0 ? (
             <>
@@ -374,6 +421,73 @@ export function CashSpending({ analysis, profile }: Props) {
         </div>
       </div>
     </div>
+  );
+}
+
+function EmergencyTargetEditor({
+  target,
+  saving,
+  onCommit,
+}: {
+  target: number;
+  saving: boolean;
+  onCommit: (value: number) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState<string>(String(Math.round(target || 0)));
+
+  function startEdit() {
+    setValue(String(Math.round(target || 0)));
+    setEditing(true);
+  }
+
+  function submit() {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) return;
+    onCommit(n);
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <span className="inline-flex items-baseline gap-1">
+        $
+        <input
+          autoFocus
+          className="input input-mono"
+          style={{
+            width: 80,
+            height: 22,
+            fontSize: 12,
+            padding: "1px 6px",
+            display: "inline-block",
+          }}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+            if (e.key === "Escape") setEditing(false);
+          }}
+          onBlur={submit}
+          inputMode="numeric"
+          disabled={saving}
+        />
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={startEdit}
+      disabled={saving}
+      className="mono underline underline-offset-4 decoration-dotted"
+      style={{ color: "var(--text-faint)" }}
+      title="Click to edit target"
+    >
+      ${Math.round(target || 0).toLocaleString()}
+      {target <= 0 && <span className="ml-1">(set)</span>}
+    </button>
   );
 }
 

@@ -6,7 +6,8 @@
  *   FINNHUB_API_KEY=your_key
  */
 
-const API_KEY = process.env.FINNHUB_API_KEY || "";
+import { hasEnv, requireEnv } from "./env";
+
 const BASE_URL = "https://finnhub.io/api/v1";
 
 // ---------------------------------------------------------------------------
@@ -54,12 +55,12 @@ export interface CompanyNews {
 // ---------------------------------------------------------------------------
 
 async function finnhubFetch<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
-  if (!API_KEY) {
+  if (!hasEnv("FINNHUB_API_KEY")) {
     throw new Error("FINNHUB_NOT_CONFIGURED");
   }
 
   const url = new URL(`${BASE_URL}${endpoint}`);
-  url.searchParams.set("token", API_KEY);
+  url.searchParams.set("token", requireEnv("FINNHUB_API_KEY"));
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, v);
   }
@@ -206,5 +207,5 @@ export async function getPortfolioNews(
  * Check if Finnhub is configured.
  */
 export function isConfigured(): boolean {
-  return API_KEY.length > 0 && !API_KEY.startsWith("your_") && API_KEY !== "changeme";
+  return hasEnv("FINNHUB_API_KEY");
 }

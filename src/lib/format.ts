@@ -1,6 +1,7 @@
 /**
  * Formatting utilities for financial display values.
  */
+import type { AssetClass } from "./types";
 
 /** Format a number as USD currency. */
 export function formatCurrency(value: number): string {
@@ -41,6 +42,40 @@ export function formatDate(dateStr: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+/**
+ * Quantity display. Crypto or sub-unit holdings get up to 6 decimals;
+ * everything else rounds to 2. Whole shares render as `100`, not `100.00`.
+ */
+export function formatQuantity(
+  value: number | null | undefined,
+  assetClass?: AssetClass
+): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  const maxDp = assetClass === "crypto" || Math.abs(value) < 1 ? 6 : 2;
+  return value.toLocaleString("en-US", {
+    maximumFractionDigits: maxDp,
+    minimumFractionDigits: 0,
+  });
+}
+
+/** "3h ago" / "2d ago" / "just now". One place for relative-time copy. */
+export function formatRelativeTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return "—";
+  const diff = Date.now() - t;
+  if (diff < 60_000) return "just now";
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
 }
 
 /** Capitalize and prettify a snake_case or camelCase string. */

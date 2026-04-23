@@ -458,7 +458,7 @@ function Field({
       </label>
       {children}
       {hint && (
-        <p className="mt-1 text-[11px] text-[color:var(--text-faint)]">{hint}</p>
+        <p className="mt-1 text-xs text-[color:var(--text-muted)]">{hint}</p>
       )}
     </div>
   );

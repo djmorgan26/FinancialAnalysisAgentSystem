@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/server";
 import {
+  invalidateAnalysis,
   loadInvestmentPreferences,
   saveInvestmentPreferences,
 } from "@/lib/data-store";
@@ -20,6 +21,9 @@ export async function PATCH(req: NextRequest) {
     const { user } = await requireUser();
     const body = await req.json();
     await saveInvestmentPreferences(user.id, body);
+    // Emergency fund target, sector caps, core tickers, etc. all feed the
+    // analysis — drop the cache so the dashboard recomputes.
+    await invalidateAnalysis(user.id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json(

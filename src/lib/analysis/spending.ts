@@ -154,7 +154,9 @@ export function analyzeSpendingFromTransactions(
     }
 
     for (const cat of SPENDING_CATEGORIES) {
-      categoryMonthlyAmounts.get(cat)!.push(monthCatTotals.get(cat) ?? 0);
+      const arr = categoryMonthlyAmounts.get(cat) ?? [];
+      arr.push(monthCatTotals.get(cat) ?? 0);
+      categoryMonthlyAmounts.set(cat, arr);
     }
   }
 

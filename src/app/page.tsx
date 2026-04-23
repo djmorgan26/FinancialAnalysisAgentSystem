@@ -5,12 +5,14 @@ import { ShellWrapper } from "@/components/app/ShellWrapper";
 import { PageContainer, PageHeader } from "@/components/app/Page";
 import { Card, StatusBadge } from "@/components/app/Pill";
 import { CashSpending } from "@/components/app/CashSpending";
+import { FlagsList } from "@/components/app/FlagsList";
 import { requireUser } from "@/lib/supabase/server";
 import {
   createSnapshot,
   getOnboardingComplete,
   loadAnalysis,
   loadFinancialData,
+  loadInvestmentPreferences,
   loadUserProfile,
   saveAnalysis,
 } from "@/lib/data-store";
@@ -23,10 +25,11 @@ export default async function DashboardPage() {
   const { user } = await requireUser();
   if (!(await getOnboardingComplete(user.id))) redirect("/onboarding");
 
-  const [cachedAnalysis, data, profile] = await Promise.all([
+  const [cachedAnalysis, data, profile, preferences] = await Promise.all([
     loadAnalysis(user.id),
     loadFinancialData(user.id),
     loadUserProfile(user.id),
+    loadInvestmentPreferences(user.id),
   ]);
 
   // If the cached analysis is older than the newest account update, or if
@@ -47,7 +50,9 @@ export default async function DashboardPage() {
         data.holdings.map((h) => h.symbol),
         user.id
       );
-      const fresh = runAnalysis(data, profile, classificationMap);
+      const fresh = runAnalysis(data, profile, classificationMap, {
+        emergencyFundTarget: preferences.emergencyFundTarget,
+      });
       // Render the fresh result immediately — don't let cache or snapshot
       // persistence failures block the UI from seeing it.
       analysis = fresh;
@@ -266,36 +271,7 @@ function DashboardContent({
             <h3 className="text-[14px] font-semibold">Flags &amp; nudges</h3>
             <span className="chip">{flags.length} open</span>
           </div>
-          {flags.length === 0 ? (
-            <div className="text-[12px] text-[color:var(--text-muted)]">
-              Nothing flagged right now.
-            </div>
-          ) : (
-            <ul className="space-y-3">
-              {flags.slice(0, 4).map((f, i) => (
-                <li
-                  key={i}
-                  className="pb-3 last:pb-0 border-b last:border-0"
-                  style={{ borderColor: "var(--border)" }}
-                >
-                  <div className="flex items-start gap-2">
-                    <span
-                      className={`chip chip-${f.type === "warning" ? "warn" : f.type === "opportunity" ? "info" : "muted"}`}
-                      style={{ fontSize: 10 }}
-                    >
-                      {f.category}
-                    </span>
-                    <div className="flex-1">
-                      <div className="text-[12.5px] font-medium">{f.title}</div>
-                      <div className="text-[11px] text-[color:var(--text-muted)] mt-0.5">
-                        {f.description}
-                      </div>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+          <FlagsList flags={flags} />
         </Card>
       </div>
 

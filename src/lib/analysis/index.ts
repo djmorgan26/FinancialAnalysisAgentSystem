@@ -47,7 +47,8 @@ import {
 export function runAnalysis(
   data: FinancialData,
   profile: UserProfile,
-  classificationMap?: ClassificationMap
+  classificationMap?: ClassificationMap,
+  options?: { emergencyFundTarget?: number | null }
 ): AnalysisResult {
   // --- Step 1: Resolve accounts ---
   const accounts = resolveAccounts(data.accounts, profile);
@@ -89,6 +90,7 @@ export function runAnalysis(
     holdings,
     accounts,
     sectorExposure,
+    emergencyFundTargetOverride: options?.emergencyFundTarget ?? null,
   });
 
   // --- Step 8: Generate insights ---

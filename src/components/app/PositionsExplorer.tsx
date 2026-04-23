@@ -637,11 +637,12 @@ function HeaderRow({
 }) {
   return (
     <div
-      className="grid text-[10px] uppercase tracking-wider px-5 py-2"
+      className="grid text-[10px] uppercase tracking-wider px-5 py-2 sticky top-0 z-10"
       style={{
         gridTemplateColumns: grid,
         color: "var(--text-muted)",
         borderBottom: "1px solid var(--border)",
+        background: "var(--bg-elevated)",
       }}
     >
       {cols.map((c, i) => {

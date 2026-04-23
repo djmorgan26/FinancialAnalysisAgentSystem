@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import Papa from "papaparse";
 import { v4 as uuidv4 } from "uuid";
-import { loadFinancialData, saveFinancialData } from "@/lib/data-store";
+import {
+  loadFinancialData,
+  saveFinancialData,
+  invalidateAnalysis,
+} from "@/lib/data-store";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireUser } from "@/lib/supabase/server";
 import type {
   Platform,
@@ -35,8 +40,11 @@ const SUPPORTED_PLATFORMS: Platform[] = [
  * existing data, and persists the result.
  */
 export async function POST(request: NextRequest) {
+  let lockId: string | null = null;
+  let lockUserId: string | null = null;
   try {
     const { user } = await requireUser();
+    lockUserId = user.id;
     const formData = await request.formData();
     const file = formData.get("file");
     const platform = formData.get("platform") as string | null;
@@ -65,6 +73,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // --- Concurrency guard ---
+    // Refuse if another CSV import for this user is marked running in the last
+    // 5 minutes. Prevents two uploads from interleaving and overwriting each other.
+    const supabase = getSupabaseAdmin();
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { data: pending } = await supabase
+      .from("sync_logs")
+      .select("id, created_at")
+      .eq("user_id", user.id)
+      .eq("source", "csv")
+      .eq("status", "running")
+      .gte("created_at", fiveMinAgo)
+      .limit(1);
+    if (pending && pending.length > 0) {
+      return NextResponse.json(
+        { error: "Another import is already running. Wait a moment and retry." },
+        { status: 409 },
+      );
+    }
+    const { data: lock } = await supabase
+      .from("sync_logs")
+      .insert({
+        user_id: user.id,
+        source: "csv",
+        status: "running",
+        message: `Importing ${platform} CSV: ${file.name}`,
+        metadata: { platform, filename: file.name },
+      })
+      .select("id")
+      .single();
+    lockId = lock?.id ?? null;
+
     // --- Parse CSV ---
     const csvText = await file.text();
     const { data: rows, errors } = Papa.parse<Record<string, string>>(
@@ -91,6 +131,17 @@ export async function POST(request: NextRequest) {
     const existing = await loadFinancialData(user.id);
     const merged = mergeData(existing, imported);
     await saveFinancialData(user.id, merged);
+    await invalidateAnalysis(user.id);
+
+    if (lockId) {
+      await supabase
+        .from("sync_logs")
+        .update({
+          status: "success",
+          message: `Imported ${imported.accounts.length} accounts, ${imported.transactions.length} txs, ${imported.holdings.length} holdings from ${platform}`,
+        })
+        .eq("id", lockId);
+    }
 
     return NextResponse.json({
       success: true,
@@ -108,6 +159,12 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("[POST /api/import] Import failed:", error);
+    if (lockId && lockUserId) {
+      await getSupabaseAdmin()
+        .from("sync_logs")
+        .update({ status: "error", message: String(error).slice(0, 500) })
+        .eq("id", lockId);
+    }
     return NextResponse.json(
       { error: "Import failed", detail: String(error) },
       { status: 500 },

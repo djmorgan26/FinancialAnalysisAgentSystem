@@ -12,6 +12,7 @@
  */
 
 import { getSupabaseAdmin as getSupabase } from "./supabase/admin";
+import { hasEnv, optionalEnv, requireEnv } from "./env";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -20,10 +21,13 @@ import { getSupabaseAdmin as getSupabase } from "./supabase/admin";
 const SCHWAB_AUTH_URL = "https://api.schwabapi.com/v1/oauth/authorize";
 const SCHWAB_TOKEN_URL = "https://api.schwabapi.com/v1/oauth/token";
 const SCHWAB_API_BASE = "https://api.schwabapi.com/trader/v1";
-const CALLBACK_URL =
-  process.env.SCHWAB_CALLBACK_URL || "http://localhost:3000/api/schwab/callback";
-const APP_KEY = process.env.SCHWAB_APP_KEY || "";
-const APP_SECRET = process.env.SCHWAB_APP_SECRET || "";
+// Accessors — resolved lazily so a missing env throws a clear error at call time
+// rather than producing silent empty-string failures downstream.
+const getCallbackUrl = () =>
+  optionalEnv("SCHWAB_CALLBACK_URL") ??
+  "http://localhost:3000/api/schwab/callback";
+const getAppKey = () => requireEnv("SCHWAB_APP_KEY");
+const getAppSecret = () => requireEnv("SCHWAB_APP_SECRET");
 
 // ---------------------------------------------------------------------------
 // Types
@@ -148,7 +152,8 @@ async function saveTokens(
 
 function basicAuthHeader(): string {
   return (
-    "Basic " + Buffer.from(`${APP_KEY}:${APP_SECRET}`).toString("base64")
+    "Basic " +
+    Buffer.from(`${getAppKey()}:${getAppSecret()}`).toString("base64")
   );
 }
 
@@ -164,8 +169,8 @@ function basicAuthHeader(): string {
 export function getAuthorizationUrl(userId: string): string {
   const params = new URLSearchParams({
     response_type: "code",
-    client_id: APP_KEY,
-    redirect_uri: CALLBACK_URL,
+    client_id: getAppKey(),
+    redirect_uri: getCallbackUrl(),
     scope: "api",
     state: userId,
   });
@@ -189,7 +194,7 @@ export async function exchangeCodeForTokens(
     body: new URLSearchParams({
       grant_type: "authorization_code",
       code,
-      redirect_uri: CALLBACK_URL,
+      redirect_uri: getCallbackUrl(),
     }),
   });
 
@@ -405,6 +410,5 @@ export async function fetchAllSchwabData(userId: string): Promise<{
  * Check if the Schwab API is configured (env vars present).
  */
 export function isConfigured(): boolean {
-  const isPlaceholder = (v: string) => !v || v.startsWith("your_") || v === "changeme";
-  return !isPlaceholder(APP_KEY) && !isPlaceholder(APP_SECRET);
+  return hasEnv("SCHWAB_APP_KEY") && hasEnv("SCHWAB_APP_SECRET");
 }

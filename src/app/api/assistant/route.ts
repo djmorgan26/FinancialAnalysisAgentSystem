@@ -6,6 +6,7 @@ import {
   runTool,
   systemPrompt,
 } from "@/lib/gemini/tools";
+import { optionalEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = optionalEnv("GEMINI_API_KEY");
   if (!apiKey) {
     return NextResponse.json(
       { error: "GEMINI_API_KEY is not configured." },

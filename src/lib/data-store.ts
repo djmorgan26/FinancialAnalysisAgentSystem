@@ -241,6 +241,17 @@ export async function saveFinancialData(
 // Analysis cache (per user)
 // ---------------------------------------------------------------------------
 
+function isAnalysisResult(v: unknown): v is AnalysisResult {
+  if (!v || typeof v !== "object") return false;
+  const r = v as Record<string, unknown>;
+  return (
+    typeof r.generatedAt === "string" &&
+    Array.isArray(r.holdings) &&
+    Array.isArray(r.accounts) &&
+    typeof r.netWorth === "number"
+  );
+}
+
 export async function loadAnalysis(
   userId: string
 ): Promise<AnalysisResult | null> {
@@ -251,7 +262,28 @@ export async function loadAnalysis(
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw error;
-  return (data?.result as AnalysisResult) ?? null;
+  const raw = data?.result;
+  if (!raw) return null;
+  if (!isAnalysisResult(raw)) {
+    console.warn(
+      `[data-store] analysis_cache.result for ${userId} failed shape check; treating as stale`
+    );
+    return null;
+  }
+  return raw;
+}
+
+/**
+ * Drop the cached analysis for a user. Call after any successful data sync
+ * (Schwab, Coinbase, CSV import) so the dashboard recomputes from fresh holdings.
+ */
+export async function invalidateAnalysis(userId: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("analysis_cache")
+    .delete()
+    .eq("user_id", userId);
+  if (error) throw error;
 }
 
 export async function saveAnalysis(
@@ -607,7 +639,7 @@ export async function loadSnapshots(userId: string): Promise<Snapshot[]> {
 export interface SyncLogEntry {
   id: string;
   source: string;
-  status: "success" | "error" | "info";
+  status: "success" | "error" | "info" | "running" | "needs_reauth";
   message: string;
   metadata?: Record<string, unknown>;
   createdAt: string;
