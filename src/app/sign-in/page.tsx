@@ -110,6 +110,19 @@ function SignInForm() {
           {loading ? "Signing in…" : "Sign in →"}
         </button>
       </form>
+
+      <div className="my-5 flex items-center gap-3 text-[11px] text-[color:var(--text-faint)]">
+        <span className="flex-1 h-px" style={{ background: "var(--border)" }} />
+        <span>or</span>
+        <span className="flex-1 h-px" style={{ background: "var(--border)" }} />
+      </div>
+
+      <a href="/demo" className="btn btn-lg w-full">
+        View live demo →
+      </a>
+      <p className="mt-2 text-center text-[11px] text-[color:var(--text-faint)]">
+        No login required. Explore a sample portfolio with mock data.
+      </p>
     </AuthShell>
   );
 }

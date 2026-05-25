@@ -7,6 +7,7 @@ import * as finnhub from "@/lib/finnhub-api";
 import * as coinbase from "@/lib/coinbase-api";
 import { requireUser } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { isDemoUserId } from "@/lib/demo/constants";
 
 export async function GET() {
   let userId: string;
@@ -14,6 +15,24 @@ export async function GET() {
     ({ user: { id: userId } } = await requireUser());
   } catch {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  // Read-only demo: report mock-connected sources, no Supabase calls.
+  if (isDemoUserId(userId)) {
+    return NextResponse.json({
+      schwab: {
+        configured: true,
+        connected: true,
+        needsReauth: false,
+        accounts: [
+          { id: "demo-acct-schwab-brokerage", name: "Schwab Individual Brokerage", last4: "4821" },
+          { id: "demo-acct-schwab-roth", name: "Schwab Roth IRA", last4: "7733" },
+        ],
+      },
+      finnhub: { configured: true, connected: true },
+      coinbase: { configured: true, connected: true },
+      csv: { fidelity: new Date().toISOString(), robinhood: null },
+    });
   }
 
   // ---- Schwab ----

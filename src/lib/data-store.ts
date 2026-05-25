@@ -13,6 +13,7 @@ import type {
   Sector,
 } from "./types";
 import { getSupabaseAdmin } from "./supabase/admin";
+import { isDemoUserId } from "./demo/constants";
 
 // ---------------------------------------------------------------------------
 // Row <-> domain mappers
@@ -164,6 +165,10 @@ function holdingToRow(userId: string, h: Holding): HoldingRow {
 // ---------------------------------------------------------------------------
 
 export async function loadFinancialData(userId: string): Promise<FinancialData> {
+  if (isDemoUserId(userId)) {
+    const { demoFinancialData } = await import("./demo/fixtures");
+    return demoFinancialData();
+  }
   const supabase = getSupabaseAdmin();
 
   const [accountsRes, transactionsRes, holdingsRes] = await Promise.all([
@@ -197,6 +202,7 @@ export async function saveFinancialData(
   userId: string,
   data: FinancialData
 ): Promise<void> {
+  if (isDemoUserId(userId)) return; // read-only demo: no-op writes
   const supabase = getSupabaseAdmin();
   const now = new Date().toISOString();
 
@@ -255,6 +261,10 @@ function isAnalysisResult(v: unknown): v is AnalysisResult {
 export async function loadAnalysis(
   userId: string
 ): Promise<AnalysisResult | null> {
+  if (isDemoUserId(userId)) {
+    const { demoAnalysis } = await import("./demo/fixtures");
+    return demoAnalysis();
+  }
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("analysis_cache")
@@ -278,6 +288,7 @@ export async function loadAnalysis(
  * (Schwab, Coinbase, CSV import) so the dashboard recomputes from fresh holdings.
  */
 export async function invalidateAnalysis(userId: string): Promise<void> {
+  if (isDemoUserId(userId)) return;
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
     .from("analysis_cache")
@@ -290,6 +301,7 @@ export async function saveAnalysis(
   userId: string,
   result: AnalysisResult
 ): Promise<void> {
+  if (isDemoUserId(userId)) return; // read-only demo: no-op writes
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("analysis_cache").upsert(
     {
@@ -342,6 +354,10 @@ function profileFromRow(r: UserProfileRow): UserProfile {
 }
 
 export async function loadUserProfile(userId: string): Promise<UserProfile> {
+  if (isDemoUserId(userId)) {
+    const { DEMO_PROFILE } = await import("./demo/fixtures");
+    return DEMO_PROFILE;
+  }
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("user_profiles")
@@ -376,6 +392,7 @@ export async function saveUserProfile(
     budgetOverrides?: UserProfile["budgetOverrides"] | null;
   }
 ): Promise<void> {
+  if (isDemoUserId(userId)) return; // read-only demo: no-op writes
   const supabase = getSupabaseAdmin();
   const row: Partial<UserProfileRow> & { user_id: string; updated_at: string } = {
     user_id: userId,
@@ -409,6 +426,7 @@ export async function saveUserProfile(
 }
 
 export async function getOnboardingComplete(userId: string): Promise<boolean> {
+  if (isDemoUserId(userId)) return true; // demo skips onboarding
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("user_profiles")
@@ -464,6 +482,10 @@ export const DEFAULT_PREFERENCES: InvestmentPreferences = {
 export async function loadInvestmentPreferences(
   userId: string
 ): Promise<InvestmentPreferences> {
+  if (isDemoUserId(userId)) {
+    const { DEMO_PREFERENCES } = await import("./demo/fixtures");
+    return DEMO_PREFERENCES;
+  }
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("investment_preferences")
@@ -516,6 +538,7 @@ export async function saveInvestmentPreferences(
   userId: string,
   prefs: Partial<InvestmentPreferences>
 ): Promise<void> {
+  if (isDemoUserId(userId)) return; // read-only demo: no-op writes
   const supabase = getSupabaseAdmin();
   const row: Record<string, unknown> = {
     user_id: userId,
@@ -565,6 +588,21 @@ export async function createSnapshot(
   userId: string,
   analysis: AnalysisResult
 ): Promise<Snapshot> {
+  if (isDemoUserId(userId)) {
+    // read-only demo: don't persist, just echo a snapshot back
+    return {
+      id: `demo-snap-${Date.now()}`,
+      date: analysis.generatedAt,
+      netWorth: analysis.netWorth,
+      totalAssets: analysis.totalAssets,
+      totalLiabilities: analysis.totalLiabilities,
+      savingsRate: analysis.savingsRate,
+      accountBalances: analysis.accounts.map((a) => ({
+        accountId: a.id,
+        balance: a.balance,
+      })),
+    };
+  }
   const supabase = getSupabaseAdmin();
 
   const { data: snap, error } = await supabase
@@ -609,6 +647,10 @@ export async function createSnapshot(
 }
 
 export async function loadSnapshots(userId: string): Promise<Snapshot[]> {
+  if (isDemoUserId(userId)) {
+    const { demoSnapshots } = await import("./demo/fixtures");
+    return demoSnapshots();
+  }
   const supabase = getSupabaseAdmin();
 
   const { data: snaps, error } = await supabase
@@ -664,6 +706,7 @@ export async function writeSyncLog(
   userId: string,
   entry: Omit<SyncLogEntry, "id" | "createdAt">
 ): Promise<void> {
+  if (isDemoUserId(userId)) return; // read-only demo: no-op writes
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("sync_logs").insert({
     user_id: userId,
@@ -679,6 +722,7 @@ export async function loadSyncLogs(
   userId: string,
   limit = 50
 ): Promise<SyncLogEntry[]> {
+  if (isDemoUserId(userId)) return [];
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("sync_logs")

@@ -7,9 +7,18 @@ import {
   systemPrompt,
 } from "@/lib/gemini/tools";
 import { optionalEnv } from "@/lib/env";
+import { isDemoUserId } from "@/lib/demo/constants";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const DEMO_ASSISTANT_REPLY =
+  "This is the read-only demo, so the live AI assistant is disabled here.\n\n" +
+  "In the full app, I have tools to read your accounts, holdings, spending, and " +
+  "investment strategy, and I answer questions like \"how much can I invest this " +
+  "month?\" or \"where am I overexposed?\" with specific dollar figures.\n\n" +
+  "The sample portfolio you're viewing — ~$447K net worth across Schwab, Fidelity, " +
+  "Coinbase, and bank accounts — is entirely fictional mock data.";
 
 type ChatMessage = { role: "user" | "model"; content: string };
 interface AssistantRequest {
@@ -27,6 +36,11 @@ export async function POST(req: NextRequest) {
     ({ user: { id: userId } } = await requireUser());
   } catch {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  // Read-only demo: don't call Gemini; return a canned, honest explanation.
+  if (isDemoUserId(userId)) {
+    return NextResponse.json({ text: DEMO_ASSISTANT_REPLY, tools: [] });
   }
 
   const apiKey = optionalEnv("GEMINI_API_KEY");

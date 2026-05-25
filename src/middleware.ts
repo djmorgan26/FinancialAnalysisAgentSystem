@@ -1,11 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { DEMO_COOKIE } from "@/lib/demo/constants";
 
 const PUBLIC_PATHS = new Set([
   "/sign-in",
   "/sign-up",
   "/forgot-password",
   "/auth/callback",
+  "/demo",
 ]);
 
 function isPublic(pathname: string): boolean {
@@ -16,29 +18,57 @@ function isPublic(pathname: string): boolean {
   return false;
 }
 
+// True when the deployment defaults every visitor into demo mode.
+const DEMO_DEFAULT = process.env.NEXT_PUBLIC_DEMO_MODE === "1";
+
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next({ request });
+  const { pathname } = request.nextUrl;
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => request.cookies.getAll(),
-        setAll: (cookiesToSet) => {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(name, value, options);
-          });
-        },
-      },
+  // No-login demo mode: the demo cookie (or NEXT_PUBLIC_DEMO_MODE=1) stands in
+  // for an authenticated session. We never call Supabase, so the app works
+  // with the database paused and no env keys configured.
+  const inDemo = DEMO_DEFAULT || request.cookies.get(DEMO_COOKIE)?.value === "1";
+  if (inDemo) {
+    // Keep the demo user out of the auth screens — send them to the dashboard.
+    if (pathname === "/sign-in" || pathname === "/sign-up") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/";
+      url.searchParams.delete("next");
+      return NextResponse.redirect(url);
     }
-  );
+    return response;
+  }
+
+  // If Supabase isn't configured (e.g. preview build with no keys), don't
+  // crash — just let public paths through and bounce everything else to the
+  // sign-in screen, which surfaces the "View live demo" entry point.
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+  const supabaseAnon =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseAnon) {
+    if (isPublic(pathname)) return response;
+    const url = request.nextUrl.clone();
+    url.pathname = "/sign-in";
+    url.searchParams.set("next", pathname);
+    return NextResponse.redirect(url);
+  }
+
+  const supabase = createServerClient(supabaseUrl, supabaseAnon, {
+    cookies: {
+      getAll: () => request.cookies.getAll(),
+      setAll: (cookiesToSet) => {
+        cookiesToSet.forEach(({ name, value, options }) => {
+          response.cookies.set(name, value, options);
+        });
+      },
+    },
+  });
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
-  const { pathname } = request.nextUrl;
 
   if (!user && !isPublic(pathname)) {
     const url = request.nextUrl.clone();

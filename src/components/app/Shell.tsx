@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { FloatingAssistant } from "./FloatingAssistant";
 import { QuickSearch, type QuickSearchItem } from "./QuickSearch";
+import { DemoBanner } from "./DemoBanner";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, match: (p: string) => p === "/" },
@@ -34,18 +35,26 @@ export function AppShell({
   syncSummary,
   netWorthPill,
   searchItems = [],
+  demo = false,
 }: {
   children: React.ReactNode;
   user: { email: string | null; initial: string };
   syncSummary?: { label: string; tone: "gain" | "warn" | "loss" } | null;
   netWorthPill?: { value: string; delta?: string; tone?: "gain" | "loss" | "neutral" } | null;
   searchItems?: QuickSearchItem[];
+  demo?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
 
   async function signOut() {
+    // In demo mode there's no session — "Sign out" exits the demo instead.
+    if (demo) {
+      router.replace("/demo?exit=1");
+      router.refresh();
+      return;
+    }
     setSigningOut(true);
     try {
       await fetch("/api/auth?action=signout", { method: "POST" });
@@ -58,6 +67,7 @@ export function AppShell({
 
   return (
     <div className="min-h-screen flex flex-col">
+      {demo && <DemoBanner />}
       {/* Top bar */}
       <header
         className="flex items-center h-14 px-5 gap-4 shrink-0"

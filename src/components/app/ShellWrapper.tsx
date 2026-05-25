@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { getOnboardingComplete, loadFinancialData } from "@/lib/data-store";
+import { isDemoActive } from "@/lib/demo/constants";
 import { AppShell } from "./Shell";
 import type { QuickSearchItem } from "./QuickSearch";
 
@@ -39,6 +40,7 @@ export async function ShellWrapper({
     : null;
 
   const searchItems = buildSearchIndex(data);
+  const demo = await isDemoActive();
 
   return (
     <AppShell
@@ -46,6 +48,7 @@ export async function ShellWrapper({
       syncSummary={null}
       netWorthPill={netWorthPill}
       searchItems={searchItems}
+      demo={demo}
     >
       {children}
     </AppShell>

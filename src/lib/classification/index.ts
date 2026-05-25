@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Sector, AssetClass } from "@/lib/types";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { isDemoUserId } from "@/lib/demo/constants";
 
 // ============================================================
 // Symbol Classification Service
@@ -91,6 +92,11 @@ export async function resolveClassifications(
   const upper = [...new Set(symbols.map((s) => s.toUpperCase()))].filter(Boolean);
   const map: ClassificationMap = new Map();
   if (upper.length === 0) return map;
+
+  if (isDemoUserId(userId)) {
+    const { demoClassificationMap } = await import("@/lib/demo/fixtures");
+    return demoClassificationMap();
+  }
 
   const supabase = getSupabaseAdmin();
 
@@ -355,6 +361,7 @@ export async function saveUserOverride(
 export async function getUserCustomCategories(
   userId: string
 ): Promise<UserCustomCategory[]> {
+  if (isDemoUserId(userId)) return [];
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("user_custom_categories")

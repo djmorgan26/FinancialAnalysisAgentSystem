@@ -8,6 +8,7 @@ import * as finnhub from "@/lib/finnhub-api";
 import * as coinbase from "@/lib/coinbase-api";
 import { loadAnalysis, saveAnalysis, writeSyncLog } from "@/lib/data-store";
 import { requireUser } from "@/lib/supabase/server";
+import { isDemoUserId } from "@/lib/demo/constants";
 
 interface RefreshResult {
   schwab: {
@@ -32,6 +33,21 @@ export async function POST() {
     ({ user: { id: userId } } = await requireUser());
   } catch {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  // Read-only demo: nothing to sync; report success against the mock data.
+  if (isDemoUserId(userId)) {
+    return NextResponse.json({
+      schwab: { success: true, message: "Demo data" },
+      finnhub: { success: true, message: "Demo data" },
+      coinbase: { success: true, message: "Demo data" },
+      overall: {
+        success: true,
+        dataSourcesUsed: ["demo"],
+        pricesUpdated: 0,
+        timestamp: new Date().toISOString(),
+      },
+    } satisfies RefreshResult);
   }
 
   const result: RefreshResult = {
