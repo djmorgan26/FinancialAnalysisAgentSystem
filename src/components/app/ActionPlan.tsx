@@ -37,7 +37,8 @@ export function ActionPlan({ strategy }: Props) {
             budget.
           </div>
         ) : (
-          <>
+          <div className="overflow-x-auto">
+          <div className="min-w-[520px]">
             <div
               className="grid text-[10px] uppercase tracking-wider px-5 py-2"
               style={{
@@ -111,7 +112,8 @@ export function ActionPlan({ strategy }: Props) {
                 )}
               </div>
             ))}
-          </>
+          </div>
+          </div>
         )}
       </Card>
 

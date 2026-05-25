@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   Cable,
@@ -13,6 +13,8 @@ import {
   Sparkles,
   Settings,
   LogOut,
+  Menu,
+  X,
 } from "lucide-react";
 import { FloatingAssistant } from "./FloatingAssistant";
 import { QuickSearch, type QuickSearchItem } from "./QuickSearch";
@@ -28,6 +30,56 @@ const NAV = [
   { href: "/assistant", label: "Assistant", icon: Sparkles, match: (p: string) => p.startsWith("/assistant") },
   { href: "/settings/preferences", label: "Settings", icon: Settings, match: (p: string) => p.startsWith("/settings") },
 ];
+
+/** The nav links + "signed in as" footer, shared by the desktop sidebar and
+ *  the mobile off-canvas drawer. `onNavigate` lets the drawer close on tap. */
+function NavList({
+  pathname,
+  email,
+  onNavigate,
+}: {
+  pathname: string;
+  email: string | null;
+  onNavigate?: () => void;
+}) {
+  return (
+    <>
+      {NAV.map(({ href, label, icon: Icon, match }) => {
+        const active = match(pathname);
+        return (
+          <Link
+            key={href}
+            href={href}
+            onClick={onNavigate}
+            className="flex items-center gap-3 px-3 py-2 rounded-[6px] text-[13px] transition-colors"
+            style={{
+              background: active ? "var(--bg-inset)" : "transparent",
+              color: active ? "var(--text)" : "var(--text-muted)",
+              border: active
+                ? "1px solid var(--border)"
+                : "1px solid transparent",
+              fontWeight: active ? 600 : 500,
+            }}
+          >
+            <Icon size={15} />
+            <span>{label}</span>
+          </Link>
+        );
+      })}
+      <div className="flex-1" />
+      <div className="px-3 py-2 text-[11px]" style={{ color: "var(--text-faint)" }}>
+        <div>Signed in as</div>
+        <div
+          className="mono truncate"
+          style={{ color: "var(--text-muted)" }}
+          title={email ?? ""}
+        >
+          {email ?? "—"}
+        </div>
+      </div>
+    </>
+  );
+}
 
 export function AppShell({
   children,
@@ -47,6 +99,22 @@ export function AppShell({
   const pathname = usePathname();
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
+
+  // Close the mobile drawer whenever the route changes.
+  useEffect(() => {
+    setNavOpen(false);
+  }, [pathname]);
+
+  // Lock body scroll while the drawer is open.
+  useEffect(() => {
+    if (!navOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [navOpen]);
 
   async function signOut() {
     // In demo mode there's no session — "Sign out" exits the demo instead.
@@ -70,12 +138,26 @@ export function AppShell({
       {demo && <DemoBanner />}
       {/* Top bar */}
       <header
-        className="flex items-center h-14 px-5 gap-4 shrink-0"
+        className="flex items-center h-14 px-3 sm:px-5 gap-2 sm:gap-4 shrink-0"
         style={{
           borderBottom: "1px solid var(--border)",
           background: "var(--bg-elevated)",
         }}
       >
+        {/* Hamburger — mobile only. Wrapped so the .btn display rule can't
+            override the md:hidden visibility utility. */}
+        <div className="md:hidden flex items-center">
+          <button
+            type="button"
+            onClick={() => setNavOpen(true)}
+            aria-label="Open navigation menu"
+            aria-expanded={navOpen}
+            className="btn btn-ghost btn-sm px-2"
+          >
+            <Menu size={18} />
+          </button>
+        </div>
+
         <Link href="/" className="flex items-center gap-2.5">
           <div
             className="w-7 h-7 rounded-md flex items-center justify-center text-[13px] font-semibold"
@@ -155,54 +237,60 @@ export function AppShell({
 
       {/* Body */}
       <div className="flex flex-1 min-h-0">
-        {/* Left nav */}
+        {/* Left nav — persistent on md+, hidden on mobile */}
         <aside
-          className="w-56 shrink-0 flex flex-col p-3 gap-1"
+          className="hidden md:flex w-56 shrink-0 flex-col p-3 gap-1"
           style={{
             borderRight: "1px solid var(--border)",
             background: "var(--bg-elevated)",
           }}
         >
-          {NAV.map(({ href, label, icon: Icon, match }) => {
-            const active = match(pathname);
-            return (
-              <Link
-                key={href}
-                href={href}
-                className="flex items-center gap-3 px-3 py-2 rounded-[6px] text-[13px] transition-colors"
-                style={{
-                  background: active ? "var(--bg-inset)" : "transparent",
-                  color: active ? "var(--text)" : "var(--text-muted)",
-                  border: active
-                    ? "1px solid var(--border)"
-                    : "1px solid transparent",
-                  fontWeight: active ? 600 : 500,
-                }}
-              >
-                <Icon size={15} />
-                <span>{label}</span>
-              </Link>
-            );
-          })}
-          <div className="flex-1" />
-          <div
-            className="px-3 py-2 text-[11px]"
-            style={{ color: "var(--text-faint)" }}
-          >
-            <div>Signed in as</div>
-            <div
-              className="mono truncate"
-              style={{ color: "var(--text-muted)" }}
-              title={user.email ?? ""}
-            >
-              {user.email ?? "—"}
-            </div>
-          </div>
+          <NavList pathname={pathname} email={user.email} />
         </aside>
+
+        {/* Mobile off-canvas drawer */}
+        {navOpen && (
+          <div className="md:hidden fixed inset-0 z-50">
+            {/* Backdrop */}
+            <button
+              type="button"
+              aria-label="Close navigation menu"
+              onClick={() => setNavOpen(false)}
+              className="absolute inset-0"
+              style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)" }}
+            />
+            {/* Drawer panel */}
+            <nav
+              className="absolute inset-y-0 left-0 w-64 max-w-[80vw] flex flex-col p-3 gap-1"
+              style={{
+                background: "var(--bg-elevated)",
+                borderRight: "1px solid var(--border)",
+                boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
+              }}
+            >
+              <div className="flex items-center justify-between px-1 pb-2 mb-1" style={{ borderBottom: "1px solid var(--border)" }}>
+                <span className="text-[13px] font-semibold tracking-tight">Menu</span>
+                <button
+                  type="button"
+                  onClick={() => setNavOpen(false)}
+                  aria-label="Close navigation menu"
+                  className="btn btn-ghost btn-sm px-2"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <NavList
+                pathname={pathname}
+                email={user.email}
+                onNavigate={() => setNavOpen(false)}
+              />
+            </nav>
+          </div>
+        )}
 
         {/* Main */}
         <main
-          className="flex-1 min-w-0 overflow-auto"
+          className="flex-1 min-w-0 overflow-x-hidden overflow-y-auto"
           style={{ background: "var(--bg)" }}
         >
           {children}

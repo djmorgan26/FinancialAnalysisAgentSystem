@@ -407,7 +407,10 @@ export function PositionsExplorer({
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table — scrolls horizontally on narrow viewports instead of
+          overflowing the page. */}
+      <div className="overflow-x-auto">
+      <div className="min-w-[760px]">
       {holdings.length === 0 ? (
         <div className="px-5 py-10 text-center text-[12px] text-[color:var(--text-muted)]">
           {emptyMessage}
@@ -618,6 +621,8 @@ export function PositionsExplorer({
           })}
         </>
       )}
+      </div>
+      </div>
     </div>
   );
 }

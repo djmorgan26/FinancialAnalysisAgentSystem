@@ -188,7 +188,7 @@ function DashboardContent({
           <div className="text-[11px] uppercase tracking-wider text-[color:var(--text-muted)]">
             Total net worth
           </div>
-          <div className="mono text-[40px] font-semibold mt-1 tracking-tight">
+          <div className="mono text-[32px] sm:text-[40px] font-semibold mt-1 tracking-tight break-words">
             ${Math.round(netWorth).toLocaleString()}
           </div>
           <div className="mt-2 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-[12px] text-[color:var(--text-muted)]">
@@ -310,6 +310,8 @@ function DashboardContent({
             View all →
           </Link>
         </div>
+        <div className="overflow-x-auto">
+        <div className="min-w-[640px]">
         <div
           className="grid text-[10px] uppercase tracking-wider px-5 py-2"
           style={{
@@ -385,6 +387,8 @@ function DashboardContent({
             );
           })
         )}
+        </div>
+        </div>
       </Card>
     </>
   );
