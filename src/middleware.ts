@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { DEMO_COOKIE } from "@/lib/demo/constants";
+import { DEMO_COOKIE, isDemoForced } from "@/lib/demo/constants";
 
 const PUBLIC_PATHS = new Set([
   "/sign-in",
@@ -18,17 +18,15 @@ function isPublic(pathname: string): boolean {
   return false;
 }
 
-// True when the deployment defaults every visitor into demo mode.
-const DEMO_DEFAULT = process.env.NEXT_PUBLIC_DEMO_MODE === "1";
-
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next({ request });
   const { pathname } = request.nextUrl;
 
-  // No-login demo mode: the demo cookie (or NEXT_PUBLIC_DEMO_MODE=1) stands in
-  // for an authenticated session. We never call Supabase, so the app works
-  // with the database paused and no env keys configured.
-  const inDemo = DEMO_DEFAULT || request.cookies.get(DEMO_COOKIE)?.value === "1";
+  // No-login demo mode: the env flag (NEXT_PUBLIC_DEMO_MODE / DEMO_MODE) or the
+  // demo cookie stands in for an authenticated session. When forced via env we
+  // never construct a Supabase client, so the app works with the database
+  // paused and even when real Supabase env vars are present.
+  const inDemo = isDemoForced() || request.cookies.get(DEMO_COOKIE)?.value === "1";
   if (inDemo) {
     // Keep the demo user out of the auth screens — send them to the dashboard.
     if (pathname === "/sign-in" || pathname === "/sign-up") {
