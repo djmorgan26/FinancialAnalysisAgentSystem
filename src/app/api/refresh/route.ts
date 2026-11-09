@@ -9,6 +9,7 @@ import * as coinbase from "@/lib/coinbase-api";
 import { loadAnalysis, saveAnalysis, writeSyncLog } from "@/lib/data-store";
 import { requireUser } from "@/lib/supabase/server";
 import { isDemoUserId } from "@/lib/demo/constants";
+import { isOwner } from "@/lib/owner";
 
 interface RefreshResult {
   schwab: {
@@ -97,7 +98,7 @@ export async function POST() {
   }
 
   // ---------- Coinbase ----------
-  if (coinbase.isConfigured()) {
+  if (coinbase.isConfigured() && isOwner(userId)) {
     try {
       const holdings = await coinbase.getHoldings();
       result.coinbase = {

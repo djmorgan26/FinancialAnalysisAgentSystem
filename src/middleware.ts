@@ -13,6 +13,8 @@ const PUBLIC_PATHS = new Set([
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
   if (pathname.startsWith("/api/schwab/callback")) return true;
+  // Scheduled jobs authenticate with CRON_SECRET inside the route itself.
+  if (pathname.startsWith("/api/cron/")) return true;
   if (pathname.startsWith("/_next")) return true;
   if (pathname.startsWith("/favicon")) return true;
   return false;
