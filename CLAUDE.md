@@ -94,6 +94,9 @@ TARGET_USER_ID                                            # optional, for CLI sc
 
 See `.env.example` for template. Keys live in Vercel production/development envs as well.
 
+## Read-only access for Claude
+Query only the `claude_ro` views (see `docs/CLAUDE_READONLY.md`). Never read `schwab_tokens` or other secrets, never write.
+
 ## Docs
 - `docs/PRD.md` — product PRD (non-technical)
 - `docs/ARCHITECTURE.md` — technical architecture

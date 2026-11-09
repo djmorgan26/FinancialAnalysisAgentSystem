@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { signupAllowed } from "@/lib/owner";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +22,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: "Email and password are required." },
       { status: 400 }
+    );
+  }
+  // Private app: only allow-listed emails may create an account.
+  if (!signupAllowed(email)) {
+    return NextResponse.json(
+      { error: "Sign-up is closed." },
+      { status: 403 }
     );
   }
   if (password.length < 8) {
