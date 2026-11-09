@@ -6,7 +6,11 @@
  *                 valid; otherwise writes a `needs_reauth` sync log so the
  *                 read-only `claude_ro.data_freshness` view shows it.
  *   2. Coinbase — pulls balances with the CDP key (read-only use).
- *   3. Recomputes the analysis cache and writes one snapshot (net-worth history).
+ *   3. Re-prices CSV-imported positions (Robinhood, Fidelity) from Finnhub.
+ *   4. Recomputes the analysis cache and writes one snapshot (net-worth history).
+ *
+ * Also called on demand by `claude_ro.refresh_now()` in Postgres (pg_net), so
+ * Claude can pull live broker data right before answering.
  *
  * The daily database activity also stops Supabase's free tier from pausing the
  * project for inactivity, which is what took the app offline in 2026.
@@ -22,6 +26,8 @@ import * as schwab from "@/lib/schwab-api";
 import * as coinbase from "@/lib/coinbase-api";
 import { syncSchwabToSupabase } from "@/lib/schwab-sync";
 import { syncCoinbaseToSupabase } from "@/lib/coinbase-sync";
+import { refreshCsvHoldingPrices } from "@/lib/price-refresh";
+import * as finnhub from "@/lib/finnhub-api";
 import {
   createSnapshot,
   loadFinancialData,
@@ -43,6 +49,7 @@ type StepStatus = "ok" | "skipped" | "needs_reauth" | "error";
 interface UserSyncReport {
   schwab: StepStatus;
   coinbase: StepStatus;
+  prices: StepStatus;
   snapshot: StepStatus;
   errors: string[];
 }
@@ -62,6 +69,7 @@ async function syncUser(userId: string): Promise<UserSyncReport> {
   const report: UserSyncReport = {
     schwab: "skipped",
     coinbase: "skipped",
+    prices: "skipped",
     snapshot: "skipped",
     errors: [],
   };
@@ -107,6 +115,24 @@ async function syncUser(userId: string): Promise<UserSyncReport> {
     }
   }
 
+  // ---------- Live prices for CSV-imported positions (Robinhood etc.) ----------
+  if (finnhub.isConfigured()) {
+    try {
+      const { updated } = await refreshCsvHoldingPrices(userId);
+      report.prices = "ok";
+      await writeSyncLog(userId, {
+        source: "prices",
+        status: "success",
+        message: `Re-priced ${updated} imported positions`,
+      });
+    } catch (err) {
+      report.prices = "error";
+      report.errors.push(
+        `prices: ${err instanceof Error ? err.message : "Unknown error"}`
+      );
+    }
+  }
+
   // ---------- Analysis + snapshot ----------
   try {
     const [data, profile, preferences] = await Promise.all([
@@ -138,6 +164,10 @@ async function syncUser(userId: string): Promise<UserSyncReport> {
   }
 
   return report;
+}
+
+export async function POST(request: NextRequest) {
+  return GET(request);
 }
 
 export async function GET(request: NextRequest) {
